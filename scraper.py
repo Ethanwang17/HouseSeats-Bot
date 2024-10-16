@@ -1,5 +1,7 @@
 import os
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -8,7 +10,6 @@ import time
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from config import HOUSESEATS_EMAIL, HOUSESEATS_PASSWORD, SENDER_EMAIL, SENDER_PASSWORD, RECEIVER_EMAIL
 import sqlite3
 
 # Use environment variables
@@ -19,14 +20,15 @@ SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD')
 RECEIVER_EMAIL = os.environ.get('RECEIVER_EMAIL')
 
 # Set up Chrome options for Heroku
-chrome_options = webdriver.ChromeOptions()
+chrome_options = Options()
 chrome_options.add_argument('--headless')  # Run Chrome in headless mode
 chrome_options.add_argument('--no-sandbox')  # Bypass OS security model, useful for PythonAnywhere
 chrome_options.add_argument('--disable-dev-shm-usage')  # Overcome limited resource problems
 chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN')
 
-# Initialize the headless webdriver (you'll need to have chromedriver installed and in your PATH)
-driver = webdriver.Chrome(options=chrome_options, executable_path=os.environ.get('CHROMEDRIVER_PATH'))
+# Initialize the headless webdriver
+service = Service(os.environ.get('CHROMEDRIVER_PATH'))
+driver = webdriver.Chrome(service=service, options=chrome_options)
 
 # Navigate to the login page
 driver.get("https://lv.houseseats.com/login")
