@@ -59,7 +59,8 @@ soup = BeautifulSoup(driver.page_source, 'html.parser')
 # Find the div with id "event-info"
 event_info_div = soup.find('div', id='event-info')
 
-logging.basicConfig(level=logging.INFO)
+# Set logging level to WARNING to reduce output
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def get_db_connection():
@@ -88,11 +89,11 @@ def get_existing_shows():
     return existing_shows
 
 def insert_new_shows(new_shows):
-    logger.info(f"Attempting to insert/update {len(new_shows)} shows")
+    logger.debug(f"Attempting to insert/update {len(new_shows)} shows")
     conn = get_db_connection()
     cur = conn.cursor()
     for show_id, show_name in new_shows:
-        logger.info(f"Inserting/updating show: ID={show_id}, Name={show_name}")
+        logger.debug(f"Inserting/updating show: ID={show_id}, Name={show_name}")
         if show_name and show_name != "[...]":
             cur.execute("""
                 INSERT INTO shows (id, name) 
@@ -107,9 +108,9 @@ def insert_new_shows(new_shows):
 
 def get_all_shows():
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur = conn.cursor()
     cur.execute('SELECT id, name FROM shows ORDER BY name')
-    all_shows = [(row['id'], row['name'] if row['name'] and row['name'] != "[...]" else None) for row in cur.fetchall()]
+    all_shows = [(row[0], row[1] if row[1] and row[1] != "[...]" else None) for row in cur.fetchall()]
     cur.close()
     conn.close()
     return all_shows
@@ -126,7 +127,7 @@ if event_info_div:
 	new_shows = set()
 	existing_shows = get_existing_shows()
 	
-	logger.info(f"Found {len(show_links)} show links")
+	logger.debug(f"Found {len(show_links)} show links")
 	
 	for link in show_links:
 		show_name = link.text.strip()
@@ -139,7 +140,7 @@ if event_info_div:
 		if show_id not in existing_shows or existing_shows[show_id] in (None, '', '[...]'):
 			new_shows.add((show_id, show_name))
 	
-	logger.info(f"Identified {len(new_shows)} new or updated shows")
+	logger.debug(f"Identified {len(new_shows)} new or updated shows")
 	
 	# Insert new shows and update existing ones if necessary
 	insert_new_shows(new_shows)
