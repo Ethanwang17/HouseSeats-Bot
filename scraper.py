@@ -86,11 +86,25 @@ def get_existing_shows():
 def insert_new_shows(new_shows):
     conn = get_db_connection()
     cur = conn.cursor()
-    for show in new_shows:
-        cur.execute('INSERT INTO shows (id, name) VALUES (%s, %s)', (show[0], show[1]))
+    for show_id, show_name in new_shows:
+        cur.execute("""
+            INSERT INTO shows (id, name) 
+            VALUES (%s, %s)
+            ON CONFLICT (id) DO UPDATE 
+            SET name = EXCLUDED.name
+        """, (show_id, show_name))
     conn.commit()
     cur.close()
     conn.close()
+
+def get_all_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name FROM shows ORDER BY name')
+    all_shows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return all_shows
 
 def initialize_database():
     create_shows_table()
@@ -105,9 +119,6 @@ if event_info_div:
 	updated_shows = set()
 	existing_shows = get_existing_shows()
 	
-	conn = get_db_connection()
-	cur = conn.cursor()
-	
 	for link in show_links:
 		show_name = link.text.strip()
 		show_id = link['href'].split('=')[-1]
@@ -120,30 +131,17 @@ if event_info_div:
 			new_shows.add((show_id, show_name))
 		elif existing_shows[show_id] != show_name:
 			updated_shows.add((show_id, show_name))
-		
-		cur.execute("""
-			INSERT INTO shows (id, name) 
-			VALUES (%s, %s)
-			ON CONFLICT (id) DO UPDATE 
-			SET name = EXCLUDED.name
-		""", (show_id, show_name))
 	
-	conn.commit()
-	cur.close()
-	conn.close()
+	# Insert new shows and update existing ones if necessary
+	insert_new_shows(new_shows.union(updated_shows))
+
+	# Get all shows from the database
+	all_shows = get_all_shows()
 
 	# Prepare the email content
-	email_content = ""
-	if new_shows:
-		email_content += f"Found {len(new_shows)} new shows:\n\n"
-		for show_id, show_name in new_shows:
-			email_content += f"New Show: {show_name} (ID: {show_id})\n"
-	if updated_shows:
-		email_content += f"\nFound {len(updated_shows)} updated shows:\n\n"
-		for show_id, show_name in updated_shows:
-			email_content += f"Updated Show: {show_name} (ID: {show_id})\n"
-	if not new_shows and not updated_shows:
-		email_content = "No new or updated shows found."
+	email_content = "Current list of all shows in the database:\n\n"
+	for show_id, show_name in all_shows:
+		email_content += f"{show_name} (ID: {show_id})\n"
 
 	# Email configuration
 	sender_email = SENDER_EMAIL
@@ -152,8 +150,8 @@ if event_info_div:
 	# Create the email message
 	message = MIMEMultipart()
 	message["From"] = sender_email
-	message["Subject"] = "HouseSeats Show List Update"
-	message["To"] = ", ".join(RECEIVER_EMAILS)  # Set the "To" field to all recipients
+	message["Subject"] = "HouseSeats Complete Show List"
+	message["To"] = ", ".join(RECEIVER_EMAILS)
 
 	# Attach the email content
 	message.attach(MIMEText(email_content, "plain"))
@@ -163,9 +161,9 @@ if event_info_div:
 		with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
 			server.login(sender_email, sender_password)
 			server.send_message(message)
-		print("Emails sent successfully!")
+		print("Email with complete show list sent successfully!")
 	except Exception as e:
-		print(f"Failed to send emails. Error: {e}")
+		print(f"Failed to send email. Error: {e}")
 else:
 	print("Could not find the event-info div. The page structure might have changed.")
 
