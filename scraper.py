@@ -120,10 +120,7 @@ if event_info_div:
 	message = MIMEMultipart()
 	message["From"] = sender_email
 	message["Subject"] = "HouseSeats Show List Update"
-	message["To"] = SENDER_EMAIL  # Set the "To" field to the sender's email
-
-	# Add all recipients to the BCC field
-	message["Bcc"] = ", ".join(RECEIVER_EMAILS)
+	message["To"] = ", ".join(RECEIVER_EMAILS)  # Set the "To" field to all recipients
 
 	# Attach the email content
 	message.attach(MIMEText(email_content, "plain"))
