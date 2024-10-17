@@ -156,31 +156,34 @@ if event_info_div:
 		else:
 			email_content += f"[Unknown Show Name] (ID: {show_id})\n"
 
-	# Email configuration
-	sender_email = SENDER_EMAIL
-	sender_password = SENDER_PASSWORD
-
-	# Create the email message
-	message = MIMEMultipart()
-	message["From"] = sender_email
-	message["Subject"] = "HouseSeats Complete Show List"
-	message["To"] = ", ".join(RECEIVER_EMAILS)
-
-	# Attach the email content
-	message.attach(MIMEText(email_content, "plain"))
-
-	# Send the email to multiple recipients
-	try:
-		with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-			server.login(sender_email, sender_password)
-			server.send_message(message)
-		print("Email with complete show list sent successfully!")
-	except Exception as e:
-		print(f"Failed to send email. Error: {e}")
+	# Send the email
+	send_email(email_content)
 else:
-	print("Could not find the event-info div. The page structure might have changed.")
+	logger.warning("Could not find the event-info div. The page structure might have changed.")
 
 # Don't forget to close the browser when you're done
 driver.quit()
 
 print("Scraping complete!")
+
+def send_email(email_content):
+    sender_email = SENDER_EMAIL
+    sender_password = SENDER_PASSWORD
+    receiver_emails = RECEIVER_EMAILS.split(',')
+
+    # Create the email message
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["Subject"] = "HouseSeats Complete Show List"
+    message["To"] = ", ".join(receiver_emails)
+
+    # Attach the email content
+    message.attach(MIMEText(email_content, "plain"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(message)
+        logger.info("Email with complete show list sent successfully!")
+    except Exception as e:
+        logger.error(f"Failed to send email. Error: {e}")
