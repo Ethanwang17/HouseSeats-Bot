@@ -120,6 +120,10 @@ if event_info_div:
 	message = MIMEMultipart()
 	message["From"] = sender_email
 	message["Subject"] = "HouseSeats Show List Update"
+	message["To"] = SENDER_EMAIL  # Set the "To" field to the sender's email
+
+	# Add all recipients to the BCC field
+	message["Bcc"] = ", ".join(RECEIVER_EMAILS)
 
 	# Attach the email content
 	message.attach(MIMEText(email_content, "plain"))
@@ -128,9 +132,7 @@ if event_info_div:
 	try:
 		with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
 			server.login(sender_email, sender_password)
-			for receiver_email in RECEIVER_EMAILS:
-				message["To"] = receiver_email
-				server.send_message(message)
+			server.send_message(message)
 		print("Emails sent successfully!")
 	except Exception as e:
 		print(f"Failed to send emails. Error: {e}")
