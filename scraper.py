@@ -17,7 +17,7 @@ HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
 SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD')
-RECEIVER_EMAIL = os.environ.get('RECEIVER_EMAIL')
+RECEIVER_EMAILS = os.environ.get('RECEIVER_EMAILS', '').split(',')
 
 # Set up Chrome options for Heroku
 chrome_options = Options()
@@ -115,25 +115,25 @@ if event_info_div:
 	# Email configuration
 	sender_email = SENDER_EMAIL
 	sender_password = SENDER_PASSWORD
-	receiver_email = RECEIVER_EMAIL
 
 	# Create the email message
 	message = MIMEMultipart()
 	message["From"] = sender_email
-	message["To"] = receiver_email
 	message["Subject"] = "HouseSeats Show List Update"
 
 	# Attach the email content
 	message.attach(MIMEText(email_content, "plain"))
 
-	# Send the email
+	# Send the email to multiple recipients
 	try:
 		with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
 			server.login(sender_email, sender_password)
-			server.send_message(message)
-		print("Email sent successfully!")
+			for receiver_email in RECEIVER_EMAILS:
+				message["To"] = receiver_email
+				server.send_message(message)
+		print("Emails sent successfully!")
 	except Exception as e:
-		print(f"Failed to send email. Error: {e}")
+		print(f"Failed to send emails. Error: {e}")
 else:
 	print("Could not find the event-info div. The page structure might have changed.")
 
