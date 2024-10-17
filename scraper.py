@@ -12,6 +12,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import psycopg2
 from psycopg2 import sql
+import logging
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -58,6 +59,9 @@ soup = BeautifulSoup(driver.page_source, 'html.parser')
 # Find the div with id "event-info"
 event_info_div = soup.find('div', id='event-info')
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
@@ -84,24 +88,28 @@ def get_existing_shows():
     return existing_shows
 
 def insert_new_shows(new_shows):
+    logger.info(f"Attempting to insert/update {len(new_shows)} shows")
     conn = get_db_connection()
     cur = conn.cursor()
     for show_id, show_name in new_shows:
-        cur.execute("""
-            INSERT INTO shows (id, name) 
-            VALUES (%s, %s)
-            ON CONFLICT (id) DO UPDATE 
-            SET name = EXCLUDED.name
-        """, (show_id, show_name))
+        logger.info(f"Inserting/updating show: ID={show_id}, Name={show_name}")
+        if show_name and show_name != "[...]":
+            cur.execute("""
+                INSERT INTO shows (id, name) 
+                VALUES (%s, %s)
+                ON CONFLICT (id) DO UPDATE 
+                SET name = EXCLUDED.name
+                WHERE COALESCE(shows.name, '') = '' OR shows.name = '[...]'
+            """, (show_id, show_name))
     conn.commit()
     cur.close()
     conn.close()
 
 def get_all_shows():
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute('SELECT id, name FROM shows ORDER BY name')
-    all_shows = cur.fetchall()
+    all_shows = [(row['id'], row['name'] if row['name'] and row['name'] != "[...]" else None) for row in cur.fetchall()]
     cur.close()
     conn.close()
     return all_shows
@@ -116,24 +124,25 @@ if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
 	new_shows = set()
-	updated_shows = set()
 	existing_shows = get_existing_shows()
+	
+	logger.info(f"Found {len(show_links)} show links")
 	
 	for link in show_links:
 		show_name = link.text.strip()
 		show_id = link['href'].split('=')[-1]
 		
-		# Skip "See All Dates" links
-		if show_name == "See All Dates":
+		# Skip "See All Dates" links and empty names
+		if show_name == "See All Dates" or not show_name:
 			continue
 		
-		if show_id not in existing_shows:
+		if show_id not in existing_shows or existing_shows[show_id] in (None, '', '[...]'):
 			new_shows.add((show_id, show_name))
-		elif existing_shows[show_id] != show_name:
-			updated_shows.add((show_id, show_name))
+	
+	logger.info(f"Identified {len(new_shows)} new or updated shows")
 	
 	# Insert new shows and update existing ones if necessary
-	insert_new_shows(new_shows.union(updated_shows))
+	insert_new_shows(new_shows)
 
 	# Get all shows from the database
 	all_shows = get_all_shows()
@@ -141,7 +150,10 @@ if event_info_div:
 	# Prepare the email content
 	email_content = "Current list of all shows in the database:\n\n"
 	for show_id, show_name in all_shows:
-		email_content += f"{show_name} (ID: {show_id})\n"
+		if show_name:
+			email_content += f"{show_name} (ID: {show_id})\n"
+		else:
+			email_content += f"[Unknown Show Name] (ID: {show_id})\n"
 
 	# Email configuration
 	sender_email = SENDER_EMAIL
