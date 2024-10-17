@@ -10,7 +10,8 @@ import time
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import sqlite3
+import psycopg2
+from psycopg2 import sql
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -18,6 +19,7 @@ HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
 SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD')
 RECEIVER_EMAILS = os.environ.get('RECEIVER_EMAILS', '').split(',')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Set up Chrome options for Heroku
 chrome_options = Options()
@@ -56,53 +58,60 @@ soup = BeautifulSoup(driver.page_source, 'html.parser')
 # Find the div with id "event-info"
 event_info_div = soup.find('div', id='event-info')
 
-# Set up database connection
-conn = sqlite3.connect('shows.db')
-cursor = conn.cursor()
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
-# Create table if it doesn't exist
-cursor.execute('''
-	CREATE TABLE IF NOT EXISTS shows (
-		id TEXT PRIMARY KEY,
-		name TEXT
-	)
-''')
-conn.commit()
+def create_shows_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS shows (
+            id TEXT PRIMARY KEY,
+            name TEXT
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
 
 def get_existing_shows():
-    conn = sqlite3.connect('shows.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT title FROM shows')
-    existing_shows = set(row[0] for row in cursor.fetchall())
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id FROM shows')
+    existing_shows = set(row[0] for row in cur.fetchall())
+    cur.close()
     conn.close()
     return existing_shows
 
 def insert_new_shows(new_shows):
-    conn = sqlite3.connect('shows.db')
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
     for show in new_shows:
-        cursor.execute('INSERT INTO shows (title) VALUES (?)', (show,))
+        cur.execute('INSERT INTO shows (id, name) VALUES (%s, %s)', (show[0], show[1]))
     conn.commit()
+    cur.close()
     conn.close()
 
 if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
 	new_shows = []
+	existing_shows = get_existing_shows()
+	
+	conn = get_db_connection()
+	cur = conn.cursor()
 	
 	for link in show_links:
 		show_name = link.text.strip()
 		show_id = link['href'].split('=')[-1]
 		
-		if show_name:
-			# Check if the show is already in the database
-			cursor.execute("SELECT * FROM shows WHERE id = ?", (show_id,))
-			if not cursor.fetchone():
-				new_shows.append((show_id, show_name))
-				# Add the new show to the database
-				cursor.execute("INSERT INTO shows (id, name) VALUES (?, ?)", (show_id, show_name))
+		if show_name and show_id not in existing_shows:
+			new_shows.append((show_id, show_name))
+			cur.execute("INSERT INTO shows (id, name) VALUES (%s, %s)", (show_id, show_name))
 	
 	conn.commit()
+	cur.close()
+	conn.close()
 
 	# Prepare the email content
 	if new_shows:
@@ -135,9 +144,6 @@ if event_info_div:
 		print(f"Failed to send emails. Error: {e}")
 else:
 	print("Could not find the event-info div. The page structure might have changed.")
-
-# Close the database connection
-conn.close()
 
 # Don't forget to close the browser when you're done
 driver.quit()
