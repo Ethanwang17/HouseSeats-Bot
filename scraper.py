@@ -110,7 +110,7 @@ def get_all_shows():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT id, name FROM shows ORDER BY name')
-    all_shows = [(row[0], row[1] if row[1] and row[1] != "[...]" else None) for row in cur.fetchall()]
+    all_shows = [(row[0], row[1]) for row in cur.fetchall()]
     cur.close()
     conn.close()
     return all_shows
@@ -171,13 +171,11 @@ def send_email(email_content):
     sender_password = SENDER_PASSWORD
     receiver_emails = RECEIVER_EMAILS.split(',')
 
-    # Create the email message
     message = MIMEMultipart()
     message["From"] = sender_email
     message["Subject"] = "HouseSeats Complete Show List"
     message["To"] = ", ".join(receiver_emails)
 
-    # Attach the email content
     message.attach(MIMEText(email_content, "plain"))
 
     try:
