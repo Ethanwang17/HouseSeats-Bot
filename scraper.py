@@ -92,6 +92,12 @@ def insert_new_shows(new_shows):
     cur.close()
     conn.close()
 
+def initialize_database():
+    create_shows_table()
+
+# Initialize the database
+initialize_database()
+
 if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
