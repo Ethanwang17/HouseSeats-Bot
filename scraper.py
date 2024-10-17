@@ -101,8 +101,8 @@ initialize_database()
 if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
-	new_shows = []
-	updated_shows = []
+	new_shows = set()
+	updated_shows = set()
 	existing_shows = get_existing_shows()
 	
 	conn = get_db_connection()
@@ -112,10 +112,14 @@ if event_info_div:
 		show_name = link.text.strip()
 		show_id = link['href'].split('=')[-1]
 		
+		# Skip "See All Dates" links
+		if show_name == "See All Dates":
+			continue
+		
 		if show_id not in existing_shows:
-			new_shows.append((show_id, show_name))
+			new_shows.add((show_id, show_name))
 		elif existing_shows[show_id] != show_name:
-			updated_shows.append((show_id, show_name))
+			updated_shows.add((show_id, show_name))
 		
 		cur.execute("""
 			INSERT INTO shows (id, name) 
