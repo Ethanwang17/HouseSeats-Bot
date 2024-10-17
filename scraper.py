@@ -77,8 +77,8 @@ def create_shows_table():
 def get_existing_shows():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT id FROM shows')
-    existing_shows = set(row[0] for row in cur.fetchall())
+    cur.execute('SELECT id, name FROM shows')
+    existing_shows = {row[0]: row[1] for row in cur.fetchall()}
     cur.close()
     conn.close()
     return existing_shows
@@ -102,6 +102,7 @@ if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
 	new_shows = []
+	updated_shows = []
 	existing_shows = get_existing_shows()
 	
 	conn = get_db_connection()
@@ -111,21 +112,34 @@ if event_info_div:
 		show_name = link.text.strip()
 		show_id = link['href'].split('=')[-1]
 		
-		if show_name and show_id not in existing_shows:
+		if show_id not in existing_shows:
 			new_shows.append((show_id, show_name))
-			cur.execute("INSERT INTO shows (id, name) VALUES (%s, %s)", (show_id, show_name))
+		elif existing_shows[show_id] != show_name:
+			updated_shows.append((show_id, show_name))
+		
+		cur.execute("""
+			INSERT INTO shows (id, name) 
+			VALUES (%s, %s)
+			ON CONFLICT (id) DO UPDATE 
+			SET name = EXCLUDED.name
+		""", (show_id, show_name))
 	
 	conn.commit()
 	cur.close()
 	conn.close()
 
 	# Prepare the email content
+	email_content = ""
 	if new_shows:
-		email_content = f"Found {len(new_shows)} new shows:\n\n"
+		email_content += f"Found {len(new_shows)} new shows:\n\n"
 		for show_id, show_name in new_shows:
 			email_content += f"New Show: {show_name} (ID: {show_id})\n"
-	else:
-		email_content = "No new shows found."
+	if updated_shows:
+		email_content += f"\nFound {len(updated_shows)} updated shows:\n\n"
+		for show_id, show_name in updated_shows:
+			email_content += f"Updated Show: {show_name} (ID: {show_id})\n"
+	if not new_shows and not updated_shows:
+		email_content = "No new or updated shows found."
 
 	# Email configuration
 	sender_email = SENDER_EMAIL
