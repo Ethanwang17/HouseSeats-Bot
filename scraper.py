@@ -96,12 +96,13 @@ def insert_shows(shows):
         cur.execute("BEGIN")
         
         # Clear the existing table
-        logger.info("Attempting to truncate the shows table")
-        cur.execute("TRUNCATE TABLE shows")
-        logger.info("Successfully truncated the shows table")
+        logger.info("Attempting to delete all rows from the shows table")
+        cur.execute("DELETE FROM shows")
+        logger.info(f"Successfully deleted {cur.rowcount} rows from the shows table")
         
         # Insert new data
         for show_id, show_name in shows:
+            logger.debug(f"Inserting show: {show_name} (ID: {show_id})")
             cur.execute("""
                 INSERT INTO shows (id, name) 
                 VALUES (%s, %s)
@@ -115,6 +116,24 @@ def insert_shows(shows):
         conn.rollback()
         logger.error(f"Error inserting shows: {e}")
         raise  # Re-raise the exception to stop the script
+    finally:
+        cur.close()
+        conn.close()
+
+# Add this function to log the current state of the database
+def log_database_state():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM shows")
+        count = cur.fetchone()[0]
+        logger.info(f"Current number of shows in the database: {count}")
+        
+        cur.execute("SELECT id, name FROM shows LIMIT 5")
+        sample = cur.fetchall()
+        logger.info(f"Sample of shows in the database: {sample}")
+    except Exception as e:
+        logger.error(f"Error checking database state: {e}")
     finally:
         cur.close()
         conn.close()
@@ -160,7 +179,7 @@ if event_info_div:
     scraped_shows = set()
     existing_shows = get_existing_shows()
     
-    logger.debug(f"Found {len(show_links)} show links")
+    logger.info(f"Found {len(show_links)} show links")
     
     for link in show_links:
         show_name = link.text.strip()
@@ -168,18 +187,26 @@ if event_info_div:
         
         # Skip "See All Dates" links and empty names
         if show_name == "See All Dates" or not show_name:
+            logger.debug(f"Skipping link: {show_name} (ID: {show_id})")
             continue
         
         logger.debug(f"Scraped show: {show_name} (ID: {show_id})")
         scraped_shows.add((show_id, show_name))
     
-    logger.debug(f"Scraped {len(scraped_shows)} shows")
+    logger.info(f"Scraped {len(scraped_shows)} shows")
     
     # Find new shows
     new_shows = scraped_shows - set(existing_shows.items())
+    logger.info(f"Found {len(new_shows)} new shows")
     
-    # Insert all scraped shows (this will clear the table and insert the new data)
+    # Log database state before insertion
+    log_database_state()
+    
+    # Insert all scraped shows
     insert_shows(scraped_shows)
+    
+    # Log database state after insertion
+    log_database_state()
 
     # Prepare the email content
     email_content = ""
