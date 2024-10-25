@@ -121,6 +121,26 @@ def initialize_database():
 # Initialize the database
 initialize_database()
 
+def send_email(email_content):
+    sender_email = SENDER_EMAIL
+    sender_password = SENDER_PASSWORD
+    receiver_emails = RECEIVER_EMAILS
+
+    message = MIMEMultipart()
+    message["From"] = sender_email
+    message["Subject"] = "HouseSeats Complete Show List"
+    message["To"] = ", ".join(receiver_emails)
+
+    message.attach(MIMEText(email_content, "plain"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(message)
+        logger.info("Email with complete show list sent successfully!")
+    except Exception as e:
+        logger.error(f"Failed to send email. Error: {e}")
+
 if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
@@ -165,23 +185,3 @@ else:
 driver.quit()
 
 print("Scraping complete!")
-
-def send_email(email_content):
-    sender_email = SENDER_EMAIL
-    sender_password = SENDER_PASSWORD
-    receiver_emails = RECEIVER_EMAILS.split(',')
-
-    message = MIMEMultipart()
-    message["From"] = sender_email
-    message["Subject"] = "HouseSeats Complete Show List"
-    message["To"] = ", ".join(receiver_emails)
-
-    message.attach(MIMEText(email_content, "plain"))
-
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, sender_password)
-            server.send_message(message)
-        logger.info("Email with complete show list sent successfully!")
-    except Exception as e:
-        logger.error(f"Failed to send email. Error: {e}")
