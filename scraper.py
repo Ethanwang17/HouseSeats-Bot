@@ -184,23 +184,17 @@ def main():
             delete_all_shows()
             insert_all_shows(scraped_shows)
 
-            # Prepare the email content
-            email_content = ""
-
+            # Only send email if there are new shows
             if new_shows:
-                email_content += "New shows found:\n\n"
+                # Prepare the email content
+                email_content = "New shows found:\n\n"
                 for show_id, show_name in new_shows:
                     email_content += f"{show_name} (ID: {show_id})\n"
                 email_content += "\n"
-            else:
-                email_content += "No new shows were found.\n\n"
 
-            email_content += "Current list of all shows:\n\n"
-            for show_id, show_name in scraped_shows:
-                email_content += f"{show_name} (ID: {show_id})\n"
+                # Send the email
+                send_email(email_content)
 
-            # Send the email
-            send_email(email_content)
         else:
             logger.warning("Could not find the event-info div. The page structure might have changed.")
 
