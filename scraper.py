@@ -96,7 +96,9 @@ def insert_shows(shows):
         cur.execute("BEGIN")
         
         # Clear the existing table
+        logger.info("Attempting to truncate the shows table")
         cur.execute("TRUNCATE TABLE shows")
+        logger.info("Successfully truncated the shows table")
         
         # Insert new data
         for show_id, show_name in shows:
@@ -107,10 +109,12 @@ def insert_shows(shows):
         
         # Commit the transaction
         conn.commit()
+        logger.info(f"Successfully inserted {len(shows)} shows")
     except Exception as e:
         # If there's an error, roll back the transaction
         conn.rollback()
         logger.error(f"Error inserting shows: {e}")
+        raise  # Re-raise the exception to stop the script
     finally:
         cur.close()
         conn.close()
@@ -166,6 +170,7 @@ if event_info_div:
         if show_name == "See All Dates" or not show_name:
             continue
         
+        logger.debug(f"Scraped show: {show_name} (ID: {show_id})")
         scraped_shows.add((show_id, show_name))
     
     logger.debug(f"Scraped {len(scraped_shows)} shows")
