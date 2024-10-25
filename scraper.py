@@ -91,15 +91,29 @@ def get_existing_shows():
 def insert_shows(shows):
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('TRUNCATE TABLE shows')  # Clear the existing table
-    for show_id, show_name in shows:
-        cur.execute("""
-            INSERT INTO shows (id, name) 
-            VALUES (%s, %s)
-        """, (show_id, show_name))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        # Start a transaction
+        cur.execute("BEGIN")
+        
+        # Clear the existing table
+        cur.execute("TRUNCATE TABLE shows")
+        
+        # Insert new data
+        for show_id, show_name in shows:
+            cur.execute("""
+                INSERT INTO shows (id, name) 
+                VALUES (%s, %s)
+            """, (show_id, show_name))
+        
+        # Commit the transaction
+        conn.commit()
+    except Exception as e:
+        # If there's an error, roll back the transaction
+        conn.rollback()
+        logger.error(f"Error inserting shows: {e}")
+    finally:
+        cur.close()
+        conn.close()
 
 def get_all_shows():
     conn = get_db_connection()
