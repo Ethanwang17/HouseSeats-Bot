@@ -95,26 +95,22 @@ def insert_shows(shows):
         # Start a transaction
         cur.execute("BEGIN")
         
-        # Clear the existing table
-        logger.info("Attempting to delete all rows from the shows table")
-        cur.execute("DELETE FROM shows")
-        logger.info(f"Successfully deleted {cur.rowcount} rows from the shows table")
-        
-        # Insert new data
+        # Use UPSERT operation
         for show_id, show_name in shows:
-            logger.debug(f"Inserting show: {show_name} (ID: {show_id})")
+            logger.debug(f"Upserting show: {show_name} (ID: {show_id})")
             cur.execute("""
                 INSERT INTO shows (id, name) 
                 VALUES (%s, %s)
+                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
             """, (show_id, show_name))
         
         # Commit the transaction
         conn.commit()
-        logger.info(f"Successfully inserted {len(shows)} shows")
+        logger.info(f"Successfully upserted {len(shows)} shows")
     except Exception as e:
         # If there's an error, roll back the transaction
         conn.rollback()
-        logger.error(f"Error inserting shows: {e}")
+        logger.error(f"Error upserting shows: {e}")
         raise  # Re-raise the exception to stop the script
     finally:
         cur.close()
@@ -129,7 +125,7 @@ def log_database_state():
         count = cur.fetchone()[0]
         logger.info(f"Current number of shows in the database: {count}")
         
-        cur.execute("SELECT id, name FROM shows LIMIT 5")
+        cur.execute("SELECT id, name FROM shows ORDER BY id LIMIT 5")
         sample = cur.fetchall()
         logger.info(f"Sample of shows in the database: {sample}")
     except Exception as e:
@@ -176,7 +172,7 @@ def send_email(email_content):
 if event_info_div:
     show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
     
-    scraped_shows = set()
+    scraped_shows = {}  # Change to a dictionary to handle duplicates
     existing_shows = get_existing_shows()
     
     logger.info(f"Found {len(show_links)} show links")
@@ -191,19 +187,21 @@ if event_info_div:
             continue
         
         logger.debug(f"Scraped show: {show_name} (ID: {show_id})")
-        scraped_shows.add((show_id, show_name))
+        if show_id in scraped_shows:
+            logger.warning(f"Duplicate show ID found: {show_id}. Existing: {scraped_shows[show_id]}, New: {show_name}")
+        scraped_shows[show_id] = show_name
     
-    logger.info(f"Scraped {len(scraped_shows)} shows")
+    logger.info(f"Scraped {len(scraped_shows)} unique shows")
     
     # Find new shows
-    new_shows = scraped_shows - set(existing_shows.items())
+    new_shows = set(scraped_shows.items()) - set(existing_shows.items())
     logger.info(f"Found {len(new_shows)} new shows")
     
     # Log database state before insertion
     log_database_state()
     
     # Insert all scraped shows
-    insert_shows(scraped_shows)
+    insert_shows(scraped_shows.items())
     
     # Log database state after insertion
     log_database_state()
@@ -218,7 +216,7 @@ if event_info_div:
         email_content += "\n\n"
     
     email_content += "Current list of all shows:\n\n"
-    for show_id, show_name in sorted(scraped_shows, key=lambda x: x[1]):
+    for show_id, show_name in sorted(scraped_shows.items(), key=lambda x: x[1]):
         email_content += f"{show_name} (ID: {show_id})\n"
 
     # Send the email
