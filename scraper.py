@@ -131,11 +131,13 @@ def send_email(email_content):
     except Exception as e:
         logger.error(f"Failed to send email. Error: {e}")
 
+# ... (previous code remains unchanged)
+
 if event_info_div:
     show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 
-    # Initialize an empty list to store scraped shows
-    scraped_shows = []
+    # Initialize an empty dictionary to store scraped shows
+    scraped_shows_dict = {}
 
     logger.debug(f"Found {len(show_links)} show links")
 
@@ -147,18 +149,22 @@ if event_info_div:
         if show_name == "See All Dates" or not show_name:
             continue
 
-        scraped_shows.append((show_id, show_name))
+        # Add show to dictionary to ensure uniqueness
+        scraped_shows_dict[show_id] = show_name
+
+    # Convert dictionary to list of tuples
+    scraped_shows = list(scraped_shows_dict.items())
 
     # Get existing shows from the database
     existing_shows = get_existing_shows()  # returns dict {id: name}
 
     # Find new shows
     existing_show_ids = set(existing_shows.keys())
-    scraped_show_ids = set([show_id for (show_id, show_name) in scraped_shows])
+    scraped_show_ids = set(scraped_shows_dict.keys())
 
     new_show_ids = scraped_show_ids - existing_show_ids
 
-    new_shows = [(show_id, show_name) for (show_id, show_name) in scraped_shows if show_id in new_show_ids]
+    new_shows = [(show_id, scraped_shows_dict[show_id]) for show_id in new_show_ids]
 
     logger.debug(f"Identified {len(new_shows)} new shows")
 
