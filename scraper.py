@@ -133,24 +133,38 @@ def send_email(email_content):
 
 # ... (previous code remains unchanged)
 
+# ... (previous imports and setup code remain unchanged)
+
 if event_info_div:
-    show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
+    # Find all panels representing shows
+    panels = event_info_div.find_all('div', class_='panel panel-default')
 
     # Initialize an empty dictionary to store scraped shows
     scraped_shows_dict = {}
 
-    logger.debug(f"Found {len(show_links)} show links")
+    logger.debug(f"Found {len(panels)} show panels")
 
-    for link in show_links:
+    for panel in panels:
+        heading = panel.find('div', class_='panel-heading')
+        if not heading:
+            continue  # Skip if no heading found
+        
+        link = heading.find('a', href=lambda href: href and href.startswith('./tickets/view/'))
+        if not link:
+            continue  # Skip if no valid link found
+        
         show_name = link.text.strip()
         show_id = link['href'].split('=')[-1]
 
-        # Skip "See All Dates" links and empty names
-        if show_name == "See All Dates" or not show_name:
+        # Skip empty show names
+        if not show_name or show_name == "[...]":
             continue
 
-        # Add show to dictionary to ensure uniqueness
-        scraped_shows_dict[show_id] = show_name
+        # Add to dictionary without overwriting existing entries with empty names
+        if show_id not in scraped_shows_dict or scraped_shows_dict[show_id] == "[...]":
+            scraped_shows_dict[show_id] = show_name
+
+    # ... (rest of the code remains the same)
 
     # Convert dictionary to list of tuples
     scraped_shows = list(scraped_shows_dict.items())
@@ -180,6 +194,8 @@ if event_info_div:
         for show_id, show_name in new_shows:
             email_content += f"{show_name} (ID: {show_id})\n"
         email_content += "\n"
+    else:
+        email_content += "No new shows were found.\n\n"
 
     email_content += "Current list of all shows:\n\n"
     for show_id, show_name in scraped_shows:
