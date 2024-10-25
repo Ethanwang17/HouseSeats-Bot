@@ -137,48 +137,48 @@ def send_email(email_content):
         logger.error(f"Failed to send email. Error: {e}")
 
 if event_info_div:
-	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
-	
-	scraped_shows = set()
-	existing_shows = get_existing_shows()
-	
-	logger.debug(f"Found {len(show_links)} show links")
-	
-	for link in show_links:
-		show_name = link.text.strip()
-		show_id = link['href'].split('=')[-1]
-		
-		# Skip "See All Dates" links and empty names
-		if show_name == "See All Dates" or not show_name:
-			continue
-		
-	 scraped_shows.add((show_id, show_name))
-	
-	logger.debug(f"Scraped {len(scraped_shows)} shows")
-	
-	# Find new shows
-	new_shows = scraped_shows - set(existing_shows.items())
-	
-	# Insert all scraped shows (this will clear the table and insert the new data)
-	insert_shows(scraped_shows)
+    show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
+    
+    scraped_shows = set()
+    existing_shows = get_existing_shows()
+    
+    logger.debug(f"Found {len(show_links)} show links")
+    
+    for link in show_links:
+        show_name = link.text.strip()
+        show_id = link['href'].split('=')[-1]
+        
+        # Skip "See All Dates" links and empty names
+        if show_name == "See All Dates" or not show_name:
+            continue
+        
+        scraped_shows.add((show_id, show_name))
+    
+    logger.debug(f"Scraped {len(scraped_shows)} shows")
+    
+    # Find new shows
+    new_shows = scraped_shows - set(existing_shows.items())
+    
+    # Insert all scraped shows (this will clear the table and insert the new data)
+    insert_shows(scraped_shows)
 
-	# Prepare the email content
-	email_content = ""
-	
-	if new_shows:
-		email_content += "New shows found:\n\n"
-		for show_id, show_name in new_shows:
-			email_content += f"{show_name} (ID: {show_id})\n"
-		email_content += "\n\n"
-	
-	email_content += "Current list of all shows:\n\n"
-	for show_id, show_name in sorted(scraped_shows, key=lambda x: x[1]):
-		email_content += f"{show_name} (ID: {show_id})\n"
+    # Prepare the email content
+    email_content = ""
+    
+    if new_shows:
+        email_content += "New shows found:\n\n"
+        for show_id, show_name in new_shows:
+            email_content += f"{show_name} (ID: {show_id})\n"
+        email_content += "\n\n"
+    
+    email_content += "Current list of all shows:\n\n"
+    for show_id, show_name in sorted(scraped_shows, key=lambda x: x[1]):
+        email_content += f"{show_name} (ID: {show_id})\n"
 
-	# Send the email
-	send_email(email_content)
+    # Send the email
+    send_email(email_content)
 else:
-	logger.warning("Could not find the event-info div. The page structure might have changed.")
+    logger.warning("Could not find the event-info div. The page structure might have changed.")
 
 # Don't forget to close the browser when you're done
 driver.quit()
