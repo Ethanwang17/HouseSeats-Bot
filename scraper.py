@@ -88,20 +88,15 @@ def get_existing_shows():
     conn.close()
     return existing_shows
 
-def insert_new_shows(new_shows):
-    logger.debug(f"Attempting to insert/update {len(new_shows)} shows")
+def insert_shows(shows):
     conn = get_db_connection()
     cur = conn.cursor()
-    for show_id, show_name in new_shows:
-        logger.debug(f"Inserting/updating show: ID={show_id}, Name={show_name}")
-        if show_name and show_name != "[...]":
-            cur.execute("""
-                INSERT INTO shows (id, name) 
-                VALUES (%s, %s)
-                ON CONFLICT (id) DO UPDATE 
-                SET name = EXCLUDED.name
-                WHERE COALESCE(shows.name, '') = '' OR shows.name = '[...]'
-            """, (show_id, show_name))
+    cur.execute('TRUNCATE TABLE shows')  # Clear the existing table
+    for show_id, show_name in shows:
+        cur.execute("""
+            INSERT INTO shows (id, name) 
+            VALUES (%s, %s)
+        """, (show_id, show_name))
     conn.commit()
     cur.close()
     conn.close()
@@ -144,7 +139,7 @@ def send_email(email_content):
 if event_info_div:
 	show_links = event_info_div.find_all('a', href=lambda href: href and href.startswith('./tickets/view/'))
 	
-	new_shows = set()
+	scraped_shows = set()
 	existing_shows = get_existing_shows()
 	
 	logger.debug(f"Found {len(show_links)} show links")
@@ -157,24 +152,28 @@ if event_info_div:
 		if show_name == "See All Dates" or not show_name:
 			continue
 		
-		if show_id not in existing_shows or existing_shows[show_id] in (None, '', '[...]'):
-			new_shows.add((show_id, show_name))
+	 scraped_shows.add((show_id, show_name))
 	
-	logger.debug(f"Identified {len(new_shows)} new or updated shows")
+	logger.debug(f"Scraped {len(scraped_shows)} shows")
 	
-	# Insert new shows and update existing ones if necessary
-	insert_new_shows(new_shows)
-
-	# Get all shows from the database
-	all_shows = get_all_shows()
+	# Find new shows
+	new_shows = scraped_shows - set(existing_shows.items())
+	
+	# Insert all scraped shows (this will clear the table and insert the new data)
+	insert_shows(scraped_shows)
 
 	# Prepare the email content
-	email_content = "Current list of all shows in the database:\n\n"
-	for show_id, show_name in all_shows:
-		if show_name:
+	email_content = ""
+	
+	if new_shows:
+		email_content += "New shows found:\n\n"
+		for show_id, show_name in new_shows:
 			email_content += f"{show_name} (ID: {show_id})\n"
-		else:
-			email_content += f"[Unknown Show Name] (ID: {show_id})\n"
+		email_content += "\n\n"
+	
+	email_content += "Current list of all shows:\n\n"
+	for show_id, show_name in sorted(scraped_shows, key=lambda x: x[1]):
+		email_content += f"{show_name} (ID: {show_id})\n"
 
 	# Send the email
 	send_email(email_content)
