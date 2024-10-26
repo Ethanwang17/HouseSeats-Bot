@@ -1,10 +1,8 @@
 import os
 import time
 import logging
-import smtplib
 import psycopg2
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from telegram import Bot
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -16,9 +14,8 @@ from bs4 import BeautifulSoup
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
-SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD')
-RECEIVER_EMAILS = os.environ.get('RECEIVER_EMAILS', '').split(',')
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')  # Your user ID or chat ID
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def main():
@@ -85,25 +82,13 @@ def main():
     def initialize_database():
         create_shows_table()
 
-    def send_email(email_content):
-        sender_email = SENDER_EMAIL
-        sender_password = SENDER_PASSWORD
-        receiver_emails = RECEIVER_EMAILS
-
-        message = MIMEMultipart()
-        message["From"] = sender_email
-        message["Subject"] = "HouseSeats Show Update"
-        message["To"] = ", ".join(receiver_emails)
-
-        message.attach(MIMEText(email_content, "plain"))
-
+    def send_telegram_message(message_text):
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
         try:
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(sender_email, sender_password)
-                server.send_message(message)
-            logger.info("Email with show update sent successfully!")
+            bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message_text)
+            logger.info("Telegram message sent successfully!")
         except Exception as e:
-            logger.error(f"Failed to send email. Error: {e}")
+            logger.error(f"Failed to send Telegram message. Error: {e}")
 
     # Initialize the database
     initialize_database()
@@ -184,22 +169,24 @@ def main():
             delete_all_shows()
             insert_all_shows(scraped_shows)
 
-            # Only send email if there are new shows
+            # Prepare the message content
             if new_shows:
-                # Prepare the email content
-                email_content = "New shows found:\n\n"
+                message_text = "New shows found:\n"
                 for show_id, show_name in new_shows:
-                    email_content += f"{show_name} (ID: {show_id})\n"
-                email_content += "\n"
+                    message_text += f"- {show_name}\n"
+            else:
+                message_text = "No new shows were found."
 
-                # Send the email
-                send_email(email_content)
+            # Send the Telegram message
+            send_telegram_message(message_text)
 
         else:
             logger.warning("Could not find the event-info div. The page structure might have changed.")
+            send_telegram_message("Warning: Could not find the event-info div. The page structure might have changed.")
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
+        send_telegram_message(f"An error occurred: {e}")
 
     finally:
         # Don't forget to close the browser when you're done
@@ -210,4 +197,4 @@ def main():
 if __name__ == "__main__":
     while True:
         main()
-        time.sleep(120)  # Sleep for 120 seconds (2 minutes)
+        time.sleep(120)  # Sleep for 2 minutes
