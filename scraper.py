@@ -171,17 +171,14 @@ def main():
             delete_all_shows()
             insert_all_shows(scraped_shows)
 
-            # Prepare the message content
+            # Only send a message if there are new shows
             if new_shows:
+                # Prepare the message content
                 message_text = "New shows found:\n"
                 for show_id, show_name in new_shows:
                     message_text += f"- {show_name}\n"
 
                 # Send the Telegram message
-                asyncio.run(send_telegram_message(message_text))
-            else:
-                # For testing purposes, send a message even if no new shows are found
-                message_text = "No new shows were found."
                 asyncio.run(send_telegram_message(message_text))
 
         else:
