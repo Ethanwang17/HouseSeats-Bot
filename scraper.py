@@ -1,10 +1,8 @@
 import os
 import time
 import logging
-import asyncio
 import psycopg2
 from telegram import Bot
-from telegram.constants import ParseMode
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -26,10 +24,10 @@ def main():
     chrome_options.add_argument('--headless')  # Run Chrome in headless mode
     chrome_options.add_argument('--no-sandbox')  # Bypass OS security model
     chrome_options.add_argument('--disable-dev-shm-usage')  # Overcome limited resource problems
-    chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN', '/app/.apt/usr/bin/google-chrome')
+    chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN')
 
     # Initialize the headless webdriver
-    service = Service(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/app/.chromedriver/bin/chromedriver'))
+    service = Service(os.environ.get('CHROMEDRIVER_PATH'))
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     # Set logging level to WARNING to reduce output
@@ -84,10 +82,10 @@ def main():
     def initialize_database():
         create_shows_table()
 
-    async def send_telegram_message(message_text):
+    def send_telegram_message(message_text):
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
         try:
-            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message_text)
+            bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message_text)
             logger.info("Telegram message sent successfully!")
         except Exception as e:
             logger.error(f"Failed to send Telegram message. Error: {e}")
@@ -171,24 +169,24 @@ def main():
             delete_all_shows()
             insert_all_shows(scraped_shows)
 
-            # Only send a message if there are new shows
+            # Prepare the message content
             if new_shows:
-                # Prepare the message content
                 message_text = "New shows found:\n"
                 for show_id, show_name in new_shows:
                     message_text += f"- {show_name}\n"
+            else:
+                message_text = "No new shows were found."
 
-                # Send the Telegram message
-                asyncio.run(send_telegram_message(message_text))
+            # Send the Telegram message
+            send_telegram_message(message_text)
 
         else:
-            warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
-            logger.warning(warning_message)
-            asyncio.run(send_telegram_message(warning_message))
+            logger.warning("Could not find the event-info div. The page structure might have changed.")
+            send_telegram_message("Warning: Could not find the event-info div. The page structure might have changed.")
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
-        asyncio.run(send_telegram_message(f"An error occurred: {e}"))
+        send_telegram_message(f"An error occurred: {e}")
 
     finally:
         # Don't forget to close the browser when you're done
