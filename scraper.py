@@ -3,8 +3,8 @@ import time
 import logging
 import asyncio
 import psycopg2
-from telegram import Bot
-from telegram.constants import ParseMode
+import discord
+from discord.ext import commands
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -16,11 +16,78 @@ from bs4 import BeautifulSoup
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
-TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')  # Your user ID or chat ID
+DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
+DISCORD_CHANNEL_ID = int(os.environ.get('DISCORD_CHANNEL_ID'))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-def main():
+# Set logging level to WARNING to reduce output
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+# Initialize Discord bot
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+def create_shows_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS shows (
+            id TEXT PRIMARY KEY,
+            name TEXT
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_existing_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name FROM shows')
+    existing_shows = {row[0]: row[1] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return existing_shows
+
+def delete_all_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM shows')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def insert_all_shows(shows):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    for show_id, show_name in shows:
+        try:
+            cur.execute('INSERT INTO shows (id, name) VALUES (%s, %s)', (show_id, show_name))
+        except Exception as e:
+            logger.error(f"Error inserting show {show_id}: {e}")
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def initialize_database():
+    create_shows_table()
+
+async def send_discord_message(message_text):
+    channel = bot.get_channel(DISCORD_CHANNEL_ID)
+    if channel is None:
+        logger.error(f"Channel with ID {DISCORD_CHANNEL_ID} not found.")
+        return
+    try:
+        await channel.send(message_text)
+        logger.info("Discord message sent successfully!")
+    except Exception as e:
+        logger.error(f"Failed to send Discord message. Error: {e}")
+
+async def main():
     # Set up Chrome options for Heroku
     chrome_options = Options()
     chrome_options.add_argument('--headless')  # Run Chrome in headless mode
@@ -31,66 +98,6 @@ def main():
     # Initialize the headless webdriver
     service = Service(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/app/.chromedriver/bin/chromedriver'))
     driver = webdriver.Chrome(service=service, options=chrome_options)
-
-    # Set logging level to WARNING to reduce output
-    logging.basicConfig(level=logging.WARNING)
-    logger = logging.getLogger(__name__)
-
-    def get_db_connection():
-        return psycopg2.connect(DATABASE_URL)
-
-    def create_shows_table():
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS shows (
-                id TEXT PRIMARY KEY,
-                name TEXT
-            )
-        ''')
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    def get_existing_shows():
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT id, name FROM shows')
-        existing_shows = {row[0]: row[1] for row in cur.fetchall()}
-        cur.close()
-        conn.close()
-        return existing_shows
-
-    def delete_all_shows():
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DELETE FROM shows')
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    def insert_all_shows(shows):
-        conn = get_db_connection()
-        cur = conn.cursor()
-        for show_id, show_name in shows:
-            try:
-                cur.execute('INSERT INTO shows (id, name) VALUES (%s, %s)', (show_id, show_name))
-            except Exception as e:
-                logger.error(f"Error inserting show {show_id}: {e}")
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    def initialize_database():
-        create_shows_table()
-
-    async def send_telegram_message(message_text):
-        bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        try:
-            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message_text)
-            logger.info("Telegram message sent successfully!")
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message. Error: {e}")
 
     # Initialize the database
     initialize_database()
@@ -114,7 +121,7 @@ def main():
         submit_button.click()
 
         # Wait for the page to load
-        time.sleep(5)
+        await asyncio.sleep(5)
 
         # Get the page source and parse it with BeautifulSoup
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -171,24 +178,25 @@ def main():
             delete_all_shows()
             insert_all_shows(scraped_shows)
 
-            # Only send a message if there are new shows
+            # Prepare the message content
             if new_shows:
-                # Prepare the message content
                 message_text = "New shows found:\n"
                 for show_id, show_name in new_shows:
                     message_text += f"- {show_name}\n"
+            else:
+                message_text = "No new shows were found."
 
-                # Send the Telegram message
-                asyncio.run(send_telegram_message(message_text))
+            # Send the Discord message
+            await send_discord_message(message_text)
 
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
-            asyncio.run(send_telegram_message(warning_message))
+            await send_discord_message(warning_message)
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
-        asyncio.run(send_telegram_message(f"An error occurred: {e}"))
+        await send_discord_message(f"An error occurred: {e}")
 
     finally:
         # Don't forget to close the browser when you're done
@@ -196,7 +204,19 @@ def main():
 
     print("Scraping complete!")
 
-if __name__ == "__main__":
+async def scraping_loop():
     while True:
-        main()
-        time.sleep(120)  # Sleep for 2 minutes
+        await main()
+        await asyncio.sleep(120)  # Sleep for 2 minutes
+
+async def run_bot_and_main():
+    # Wait until the bot is ready
+    await bot.wait_until_ready()
+    # Start the scraping loop
+    bot.loop.create_task(scraping_loop())
+
+    # We need to keep the bot running
+    await bot.start(DISCORD_BOT_TOKEN)
+
+if __name__ == "__main__":
+    asyncio.run(run_bot_and_main())
