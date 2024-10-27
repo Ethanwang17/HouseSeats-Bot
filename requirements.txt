@@ -4,3 +4,4 @@ requests
 python-dotenv
 psycopg2-binary
 python-telegram-bot==20.3
+py-cord==2.4.1
