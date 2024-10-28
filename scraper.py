@@ -197,6 +197,14 @@ def scrape_and_process():
 
             # Prepare and send Discord messages
             if new_shows:
+                # Send heading message first
+                heading_message = "# 🎭 NEW SHOWS FOUND! 🎭"
+                asyncio.run_coroutine_threadsafe(
+                    send_discord_message(message_text=heading_message),
+                    bot.loop
+                )
+                time.sleep(1)  # Brief delay after heading
+                
                 # Send individual embeds for each new show
                 for show_id, show_info in new_shows.items():
                     embed = discord.Embed(
@@ -212,13 +220,6 @@ def scrape_and_process():
                     )
                     # Add a short delay to respect rate limits
                     time.sleep(1)
-            else:
-                message_text = "No new shows were found."
-                asyncio.run_coroutine_threadsafe(
-                    send_discord_message(message_text=message_text),
-                    bot.loop
-                )
-
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
