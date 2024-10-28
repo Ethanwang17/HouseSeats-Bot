@@ -38,7 +38,9 @@ def create_shows_table():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS shows (
             id TEXT PRIMARY KEY,
-            name TEXT
+            name TEXT,
+            url TEXT,
+            image_url TEXT
         )
     ''')
     conn.commit()
@@ -48,8 +50,8 @@ def create_shows_table():
 def get_existing_shows():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT id, name FROM shows')
-    existing_shows = {row[0]: row[1] for row in cur.fetchall()}
+    cur.execute('SELECT id, name, url, image_url FROM shows')
+    existing_shows = {row[0]: {'name': row[1], 'url': row[2], 'image_url': row[3]} for row in cur.fetchall()}
     cur.close()
     conn.close()
     return existing_shows
@@ -65,9 +67,10 @@ def delete_all_shows():
 def insert_all_shows(shows):
     conn = get_db_connection()
     cur = conn.cursor()
-    for show_id, show_name in shows:
+    for show_id, show_info in shows.items():
         try:
-            cur.execute('INSERT INTO shows (id, name) VALUES (%s, %s)', (show_id, show_name))
+            cur.execute('INSERT INTO shows (id, name, url, image_url) VALUES (%s, %s, %s, %s)',
+                        (show_id, show_info['name'], show_info['url'], show_info['image_url']))
         except Exception as e:
             logger.error(f"Error inserting show {show_id}: {e}")
     conn.commit()
@@ -77,13 +80,16 @@ def insert_all_shows(shows):
 def initialize_database():
     create_shows_table()
 
-async def send_discord_message(message_text):
+async def send_discord_message(message_text=None, embeds=None):
     try:
         channel = await bot.fetch_channel(DISCORD_CHANNEL_ID)
         if channel is None:
             logger.error(f"Channel with ID {DISCORD_CHANNEL_ID} not found.")
             return
-        await channel.send(message_text)
+        if embeds:
+            await channel.send(content=message_text, embeds=embeds)
+        else:
+            await channel.send(content=message_text)
         logger.info("Discord message sent successfully!")
     except Exception as e:
         logger.error(f"Failed to send Discord message. Error: {e}")
@@ -151,19 +157,29 @@ def scrape_and_process():
                 show_name = link.text.strip()
                 show_id = link['href'].split('=')[-1]
 
+                # Construct the full show URL
+                show_url = 'https://lv.houseseats.com' + link['href'][1:]  # Remove the leading '.'
+
+                # Get the image URL
+                image_tag = panel.find('img', src=lambda src: src and src.startswith('/resources/media/'))
+                if image_tag:
+                    image_url = 'https://lv.houseseats.com' + image_tag['src']
+                else:
+                    image_url = None  # Handle cases where image is not available
+
                 # Skip empty show names
                 if not show_name or show_name == "[...]":
                     continue
 
-                # Add to dictionary without overwriting existing entries with empty names
-                if show_id not in scraped_shows_dict or scraped_shows_dict[show_id] == "[...]":
-                    scraped_shows_dict[show_id] = show_name
-
-            # Convert dictionary to list of tuples
-            scraped_shows = list(scraped_shows_dict.items())
+                # Add to dictionary
+                scraped_shows_dict[show_id] = {
+                    'name': show_name,
+                    'url': show_url,
+                    'image_url': image_url
+                }
 
             # Get existing shows from the database
-            existing_shows = get_existing_shows()  # returns dict {id: name}
+            existing_shows = get_existing_shows()  # returns dict {id: {'name', 'url', 'image_url'}}
 
             # Find new shows
             existing_show_ids = set(existing_shows.keys())
@@ -171,34 +187,46 @@ def scrape_and_process():
 
             new_show_ids = scraped_show_ids - existing_show_ids
 
-            new_shows = [(show_id, scraped_shows_dict[show_id]) for show_id in new_show_ids]
+            new_shows = {show_id: scraped_shows_dict[show_id] for show_id in new_show_ids}
 
             logger.debug(f"Identified {len(new_shows)} new shows")
 
             # Now erase the database and rewrite it with all the shows just found
             delete_all_shows()
-            insert_all_shows(scraped_shows)
+            insert_all_shows(scraped_shows_dict)
 
             # Prepare the message content
             if new_shows:
-                message_text = "New shows found:\n"
-                for show_id, show_name in new_shows:
-                    message_text += f"- {show_name}\n"
+                for show_id, show_info in new_shows.items():
+                    embed = discord.Embed(title=show_info['name'], url=show_info['url'])
+                    if show_info['image_url']:
+                        embed.set_image(url=show_info['image_url'])
+                    # Schedule the message to be sent with embed
+                    asyncio.run_coroutine_threadsafe(send_discord_message(embeds=[embed]), bot.loop)
             else:
                 message_text = "No new shows were found."
-
-            # Schedule the message to be sent
-            asyncio.run_coroutine_threadsafe(send_discord_message(message_text), bot.loop)
+                # For testing purposes, include existing shows
+                embed = discord.Embed(title="Existing Shows")
+                for show_id, show_info in scraped_shows_dict.items():
+                    embed.add_field(
+                        name=show_info['name'],
+                        value=f"[Link]({show_info['url']})\nID: {show_id}",
+                        inline=False
+                    )
+                    if len(embed.fields) >= 25:  # Discord allows max 25 fields per embed
+                        break  # Avoid exceeding the limit
+                # Schedule the message to be sent with message text and embed
+                asyncio.run_coroutine_threadsafe(send_discord_message(message_text=message_text, embeds=[embed]), bot.loop)
 
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
-            asyncio.run_coroutine_threadsafe(send_discord_message(warning_message), bot.loop)
+            asyncio.run_coroutine_threadsafe(send_discord_message(message_text=warning_message), bot.loop)
 
     except Exception as e:
         error_message = f"An error occurred: {e}"
         logger.error(error_message)
-        asyncio.run_coroutine_threadsafe(send_discord_message(error_message), bot.loop)
+        asyncio.run_coroutine_threadsafe(send_discord_message(message_text=error_message), bot.loop)
 
     finally:
         # Close the browser
