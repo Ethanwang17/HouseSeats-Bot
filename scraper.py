@@ -4,6 +4,7 @@ import logging
 import asyncio
 import psycopg2
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -24,10 +25,12 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# Initialize Discord bot with necessary intents
+# Initialize Discord bot with necessary intents and application commands
 intents = discord.Intents.default()
 intents.guilds = True  # Enable guild-related events
+intents.members = True  # Enable access to guild members
 bot = commands.Bot(command_prefix='!', intents=intents)
+tree = bot.tree  # For application commands
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
@@ -57,6 +60,20 @@ def create_all_shows_table():
             url TEXT,
             image_url TEXT,
             first_seen_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def create_user_blacklists_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_blacklists (
+            user_id BIGINT NOT NULL,
+            show_id TEXT NOT NULL,
+            PRIMARY KEY (user_id, show_id)
         )
     ''')
     conn.commit()
@@ -112,7 +129,8 @@ def add_to_all_shows(shows):
 
 def initialize_database():
     create_shows_table()
-    create_all_shows_table()  # Add this line
+    create_all_shows_table()
+    create_user_blacklists_table()  # Add this line
 
 async def send_discord_message(message_text=None, embeds=None):
     try:
@@ -127,6 +145,15 @@ async def send_discord_message(message_text=None, embeds=None):
         logger.info("Discord message sent successfully!")
     except Exception as e:
         logger.error(f"Failed to send Discord message. Error: {e}")
+
+async def send_user_dm(user: discord.User, embed: discord.Embed):
+    try:
+        await user.send(embed=embed)
+        logger.info(f"Sent DM to user {user.id}")
+    except discord.Forbidden:
+        logger.warning(f"Cannot send DM to user {user.id}. They might have DMs disabled.")
+    except Exception as e:
+        logger.error(f"Error sending DM to user {user.id}: {e}")
 
 def scrape_and_process():
     # Initialize the database
@@ -234,21 +261,12 @@ def scrape_and_process():
 
             # Prepare and send Discord messages
             if new_shows:
-                # Send individual embeds for each new show
-                for show_id, show_info in new_shows.items():
-                    embed = discord.Embed(
-                        title=f"{show_info['name']} (Show ID:{show_id})",
-                        url=show_info['url']
-                    )
-                    if show_info['image_url']:
-                        embed.set_image(url=show_info['image_url'])
-                    # Schedule the message to be sent with embed
-                    asyncio.run_coroutine_threadsafe(
-                        send_discord_message(embeds=[embed]),
-                        bot.loop
-                    )
-                    # Add a short delay to respect rate limits
-                    time.sleep(1)
+                # Notify users via DMs, considering their blacklists
+                asyncio.run_coroutine_threadsafe(
+                    notify_users_about_new_shows(new_shows),
+                    bot.loop
+                )
+
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
@@ -269,6 +287,61 @@ def scrape_and_process():
         # Close the browser
         driver.quit()
 
+async def notify_users_about_new_shows(new_shows):
+    if not new_shows:
+        return
+
+    # Fetch all users in guilds
+    users_to_notify = set()
+    for guild in bot.guilds:
+        async for member in guild.fetch_members(limit=None):
+            if not member.bot:
+                users_to_notify.add(member)
+
+    # Fetch blacklists
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Get all user blacklists for new shows
+        new_show_ids = tuple(new_shows.keys())
+        if not new_show_ids:
+            return
+        query = '''
+            SELECT user_id, show_id FROM user_blacklists
+            WHERE show_id = ANY(%s)
+        '''
+        cur.execute(query, (new_show_ids,))
+        rows = cur.fetchall()
+        user_blacklists = {}
+        for row in rows:
+            user_id, show_id = row
+            if user_id not in user_blacklists:
+                user_blacklists[user_id] = set()
+            user_blacklists[user_id].add(show_id)
+    except Exception as e:
+        logger.error(f"Error fetching user blacklists: {e}")
+        user_blacklists = {}
+    finally:
+        cur.close()
+        conn.close()
+
+    # Iterate over users and send DMs excluding blacklisted shows
+    for user in users_to_notify:
+        blacklisted_show_ids = user_blacklists.get(user.id, set())
+        shows_to_notify = {show_id: info for show_id, info in new_shows.items() if show_id not in blacklisted_show_ids}
+        if shows_to_notify:
+            for show_id, show_info in shows_to_notify.items():
+                embed = discord.Embed(
+                    title=f"{show_info['name']} (Show ID: {show_id})",
+                    url=show_info['url']
+                )
+                if show_info['image_url']:
+                    embed.set_image(url=show_info['image_url'])
+                # Schedule the DM to be sent
+                asyncio.create_task(send_user_dm(user, embed))
+                # Add a short delay to respect rate limits
+                await asyncio.sleep(1)  # Use asyncio.sleep instead of time.sleep
+
 @tasks.loop(minutes=2)
 async def scraping_task():
     await asyncio.to_thread(scrape_and_process)
@@ -279,6 +352,69 @@ async def before_scraping_task():
 
 # Start the task when the bot is ready
 scraping_task.start()
+
+@bot.event
+async def on_ready():
+    # Sync the application commands with Discord
+    await tree.sync()
+    logger.info(f'Logged in as {bot.user}')
+
+@tree.command(name="blacklist", description="Manage your personal show blacklist")
+async def blacklist(interaction: discord.Interaction):
+    pass  # This is a parent command
+
+@blacklist.subcommand(name="add", description="Add a show ID to your blacklist")
+async def blacklist_add(interaction: discord.Interaction, show_id: str):
+    user_id = interaction.user.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                    (user_id, show_id))
+        conn.commit()
+        await interaction.response.send_message(f"Show ID `{show_id}` has been added to your blacklist.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error adding show to blacklist: {e}")
+        await interaction.response.send_message("An error occurred while adding to the blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@blacklist.subcommand(name="remove", description="Remove a show ID from your blacklist")
+async def blacklist_remove(interaction: discord.Interaction, show_id: str):
+    user_id = interaction.user.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
+        conn.commit()
+        await interaction.response.send_message(f"Show ID `{show_id}` has been removed from your blacklist.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error removing show from blacklist: {e}")
+        await interaction.response.send_message("An error occurred while removing from the blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@blacklist.subcommand(name="list", description="List your blacklisted show IDs")
+async def blacklist_list(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT show_id FROM user_blacklists WHERE user_id = %s', (user_id,))
+        rows = cur.fetchall()
+        if rows:
+            show_ids = [row[0] for row in rows]
+            await interaction.response.send_message(f"Your blacklisted show IDs: {', '.join(show_ids)}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Your blacklist is empty.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error fetching blacklist: {e}")
+        await interaction.response.send_message("An error occurred while fetching your blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
 
 # Run the bot
 bot.run(DISCORD_BOT_TOKEN)
