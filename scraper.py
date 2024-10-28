@@ -158,7 +158,7 @@ def scrape_and_process():
                 show_id = link['href'].split('=')[-1]
 
                 # Construct the full show URL
-                show_url = 'https://lv.houseseats.com' + link['href'][1:]  # Remove the leading '.'
+                show_url = 'https://lv.houseseats.com/member' + link['href'][1:]  # Remove the leading '.'
 
                 # Get the image URL
                 image_tag = panel.find('img', src=lambda src: src and src.startswith('/resources/media/'))
