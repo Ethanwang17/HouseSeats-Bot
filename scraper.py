@@ -158,7 +158,7 @@ def scrape_and_process():
                 show_id = link['href'].split('=')[-1]
 
                 # Construct the full show URL
-                show_url = 'https://lv.houseseats.com/member' + link['href'][1:]  # Remove the leading '.'
+                show_url = 'https://lv.houseseats.com' + link['href'][1:]  # Remove the leading '.'
 
                 # Get the image URL
                 image_tag = panel.find('img', src=lambda src: src and src.startswith('/resources/media/'))
@@ -195,38 +195,58 @@ def scrape_and_process():
             delete_all_shows()
             insert_all_shows(scraped_shows_dict)
 
-            # Prepare the message content
+            # Prepare and send Discord messages
             if new_shows:
                 for show_id, show_info in new_shows.items():
-                    embed = discord.Embed(title=show_info['name'], url=show_info['url'])
+                    embed = discord.Embed(
+                        title=f"{show_info['name']} ({show_id})",
+                        url=show_info['url']
+                    )
                     if show_info['image_url']:
                         embed.set_image(url=show_info['image_url'])
                     # Schedule the message to be sent with embed
-                    asyncio.run_coroutine_threadsafe(send_discord_message(embeds=[embed]), bot.loop)
-            else:
-                message_text = "No new shows were found."
-                # For testing purposes, include existing shows
-                embed = discord.Embed(title="Existing Shows")
-                for show_id, show_info in scraped_shows_dict.items():
-                    embed.add_field(
-                        name=show_info['name'],
-                        value=f"[Link]({show_info['url']})\nID: {show_id}",
-                        inline=False
+                    asyncio.run_coroutine_threadsafe(
+                        send_discord_message(embeds=[embed]),
+                        bot.loop
                     )
-                    if len(embed.fields) >= 25:  # Discord allows max 25 fields per embed
-                        break  # Avoid exceeding the limit
-                # Schedule the message to be sent with message text and embed
-                asyncio.run_coroutine_threadsafe(send_discord_message(message_text=message_text, embeds=[embed]), bot.loop)
+            else:
+                message_text = "No new shows were found. Here are the existing shows:"
+                asyncio.run_coroutine_threadsafe(
+                    send_discord_message(message_text=message_text),
+                    bot.loop
+                )
+
+                # Send individual embeds for each existing show
+                for show_id, show_info in scraped_shows_dict.items():
+                    embed = discord.Embed(
+                        title=f"{show_info['name']} ({show_id})",
+                        url=show_info['url']
+                    )
+                    if show_info['image_url']:
+                        embed.set_image(url=show_info['image_url'])
+                    # Schedule the message to be sent with embed
+                    asyncio.run_coroutine_threadsafe(
+                        send_discord_message(embeds=[embed]),
+                        bot.loop
+                    )
+                    # Add a short delay to respect rate limits
+                    time.sleep(1)
 
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
-            asyncio.run_coroutine_threadsafe(send_discord_message(message_text=warning_message), bot.loop)
+            asyncio.run_coroutine_threadsafe(
+                send_discord_message(message_text=warning_message),
+                bot.loop
+            )
 
     except Exception as e:
         error_message = f"An error occurred: {e}"
         logger.error(error_message)
-        asyncio.run_coroutine_threadsafe(send_discord_message(message_text=error_message), bot.loop)
+        asyncio.run_coroutine_threadsafe(
+            send_discord_message(message_text=error_message),
+            bot.loop
+        )
 
     finally:
         # Close the browser
