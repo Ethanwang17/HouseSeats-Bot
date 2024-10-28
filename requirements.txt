@@ -1,7 +1,12 @@
-selenium
-beautifulsoup4
-requests
-python-dotenv
-psycopg2-binary
-python-telegram-bot==20.3
-py-cord
+# selenium
+# beautifulsoup4
+# requests
+# python-dotenv
+# psycopg2-binary
+# python-telegram-bot==20.3
+# py-cord
+
+py-cord==2.6.1
+psycopg2-binary==2.9.6
+selenium==4.10.0
+beautifulsoup4==4.12.2
