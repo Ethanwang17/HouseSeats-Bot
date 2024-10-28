@@ -302,16 +302,19 @@ async def notify_users_about_new_shows(new_shows):
     try:
         # Get all user blacklists for new shows
         new_show_ids = tuple(new_shows.keys())
-        if not new_show_ids:
-            return
+        if len(new_show_ids) == 1:  # PostgreSQL requires special handling for single-item tuples
+            new_show_ids = f"('{new_show_ids[0]}')"
+        
         query = '''
-            SELECT user_id, show_id FROM user_blacklists
+            SELECT user_id, show_id 
+            FROM user_blacklists 
             WHERE show_id = ANY(%s)
         '''
-        cur.execute(query, (new_show_ids,))
-        rows = cur.fetchall()
+        cur.execute(query, (list(new_show_ids),))  # Convert to list for proper PostgreSQL array handling
+        
+        # Build a dictionary of user_id -> set of blacklisted show_ids
         user_blacklists = {}
-        for row in rows:
+        for row in cur.fetchall():
             user_id, show_id = row
             if user_id not in user_blacklists:
                 user_blacklists[user_id] = set()
