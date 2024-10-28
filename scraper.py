@@ -422,28 +422,22 @@ async def all_shows(ctx):
             await ctx.respond("No shows found in the database.", ephemeral=True)
             return
 
-        # Create embeds (Discord has a limit of 10 fields per embed when using images)
+        # Create embeds (Discord has a limit of 25 fields per embed)
         embeds = []
         current_embed = discord.Embed(title="All Shows History", color=discord.Color.blue())
         field_count = 0
         
         for show_id, name, image_url in shows:
-            if field_count == 10:  # Reduced limit due to images
+            if field_count == 25:  # Start a new embed when we hit the limit
                 embeds.append(current_embed)
                 current_embed = discord.Embed(title="All Shows History (Continued)", color=discord.Color.blue())
                 field_count = 0
             
-            # Create field with name and ID
             current_embed.add_field(
-                name=f"{name}",
-                value=f"ID: {show_id}",
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
                 inline=True
             )
-            
-            # Add thumbnail if image_url exists
-            if image_url and field_count == 0:  # Set image for first show in each embed
-                current_embed.set_thumbnail(url=image_url)
-            
             field_count += 1
 
         # Add the last embed if it has any fields
@@ -473,16 +467,30 @@ async def current_shows(ctx):
             await ctx.respond("No current shows available.", ephemeral=True)
             return
 
-        # Send individual embed for each show
+        # Create embeds (Discord has a limit of 25 fields per embed)
+        embeds = []
+        current_embed = discord.Embed(title="Currently Available Shows", color=discord.Color.green())
+        field_count = 0
+        
         for show_id, name, image_url in shows:
-            embed = discord.Embed(
-                title=name,
-                description=f"Show ID: {show_id}",
-                color=discord.Color.green()
-            )
-            if image_url:
-                embed.set_image(url=image_url)
+            if field_count == 25:  # Start a new embed when we hit the limit
+                embeds.append(current_embed)
+                current_embed = discord.Embed(title="Currently Available Shows (Continued)", color=discord.Color.green())
+                field_count = 0
             
+            current_embed.add_field(
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
+                inline=True
+            )
+            field_count += 1
+
+        # Add the last embed if it has any fields
+        if field_count > 0:
+            embeds.append(current_embed)
+
+        # Send all embeds
+        for embed in embeds:
             await ctx.respond(embed=embed, ephemeral=True)
 
     except Exception as e:
