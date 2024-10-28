@@ -289,6 +289,44 @@ def scrape_and_process():
         # Close the browser
         driver.quit()
 
+# Add this class before the notify_users_about_new_shows function
+class BlacklistButton(Button):
+    def __init__(self, show_id: str, user_id: int):
+        super().__init__(
+            label="Blacklist Show",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"blacklist_{show_id}"
+        )
+        self.show_id = show_id
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This button is not for you!", ephemeral=True)
+            return
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                'INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                (interaction.user.id, self.show_id)
+            )
+            conn.commit()
+            await interaction.response.send_message(
+                f"Show ID `{self.show_id}` has been added to your blacklist.",
+                ephemeral=True
+            )
+        except Exception as e:
+            logger.error(f"Error adding show to blacklist: {e}")
+            await interaction.response.send_message(
+                "An error occurred while adding to the blacklist.",
+                ephemeral=True
+            )
+        finally:
+            cur.close()
+            conn.close()
+
 async def notify_users_about_new_shows(new_shows):
     if not new_shows:
         return
@@ -360,43 +398,9 @@ async def notify_users_about_new_shows(new_shows):
                 if show_info['image_url']:
                     embed.set_image(url=show_info['image_url'])
                 
-                # Create a view with a blacklist button
+                # Create a view with the blacklist button
                 view = View()
-                blacklist_button = Button(
-                    label="Blacklist Show",
-                    style=discord.ButtonStyle.secondary,
-                    custom_id=f"blacklist_{show_id}"
-                )
-
-                async def button_callback(interaction: discord.Interaction):
-                    if interaction.user.id != user.id:
-                        await interaction.response.send_message("This button is not for you!", ephemeral=True)
-                        return
-                    
-                    show_id_to_blacklist = interaction.custom_id.split('_')[1]
-                    conn = get_db_connection()
-                    cur = conn.cursor()
-                    try:
-                        cur.execute(
-                            'INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
-                            (interaction.user.id, show_id_to_blacklist)
-                        )
-                        conn.commit()
-                        await interaction.response.send_message(
-                            f"Show ID `{show_id_to_blacklist}` has been added to your blacklist.",
-                            ephemeral=True
-                        )
-                    except Exception as e:
-                        logger.error(f"Error adding show to blacklist: {e}")
-                        await interaction.response.send_message(
-                            "An error occurred while adding to the blacklist.",
-                            ephemeral=True
-                        )
-                    finally:
-                        cur.close()
-                        conn.close()
-
-                blacklist_button.callback = button_callback
+                blacklist_button = BlacklistButton(show_id, user.id)
                 view.add_item(blacklist_button)
 
                 # Send the message with the view
