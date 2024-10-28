@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # Initialize Discord bot with necessary intents
 intents = discord.Intents.default()
 intents.guilds = True  # Enable guild-related events
+intents.members = True  # Enable member-related events (required for fetching members)
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 def get_db_connection():
@@ -47,6 +48,22 @@ def create_shows_table():
     cur.close()
     conn.close()
 
+def create_all_shows_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS all_shows (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            url TEXT,
+            image_url TEXT,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
 def get_existing_shows():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -55,6 +72,15 @@ def get_existing_shows():
     cur.close()
     conn.close()
     return existing_shows
+
+def get_all_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name, url, image_url, first_seen FROM all_shows')
+    all_shows = {row[0]: {'name': row[1], 'url': row[2], 'image_url': row[3], 'first_seen': row[4]} for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return all_shows
 
 def delete_all_shows():
     conn = get_db_connection()
@@ -77,8 +103,25 @@ def insert_all_shows(shows):
     cur.close()
     conn.close()
 
+def insert_unique_show_into_all_shows(show_id, show_info):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('''
+            INSERT INTO all_shows (id, name, url, image_url)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+        ''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error inserting show into all_shows {show_id}: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
 def initialize_database():
     create_shows_table()
+    create_all_shows_table()
 
 async def send_discord_message(message_text=None, embeds=None):
     try:
@@ -178,7 +221,7 @@ def scrape_and_process():
                     'image_url': image_url
                 }
 
-            # Get existing shows from the database
+            # Get existing shows from the 'shows' table
             existing_shows = get_existing_shows()  # returns dict {id: {'name', 'url', 'image_url'}}
 
             # Find new shows
@@ -191,11 +234,15 @@ def scrape_and_process():
 
             logger.debug(f"Identified {len(new_shows)} new shows")
 
-            # Now erase the database and rewrite it with all the shows just found
+            # Now erase the 'shows' table and rewrite it with all the shows just found
             delete_all_shows()
             insert_all_shows(scraped_shows_dict)
 
-            # Prepare and send Discord messages
+            # Insert unique shows into 'all_shows' table
+            for show_id, show_info in scraped_shows_dict.items():
+                insert_unique_show_into_all_shows(show_id, show_info)
+
+            # Prepare and send Discord messages only if there are new shows
             if new_shows:
                 # Send individual embeds for each new show
                 for show_id, show_info in new_shows.items():
@@ -212,6 +259,10 @@ def scrape_and_process():
                     )
                     # Add a short delay to respect rate limits
                     time.sleep(1)
+            else:
+                # No new shows found; do not send any message
+                pass
+
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
             logger.warning(warning_message)
@@ -220,28 +271,26 @@ def scrape_and_process():
                 bot.loop
             )
 
-    except Exception as e:
-        error_message = f"An error occurred: {e}"
-        logger.error(error_message)
-        asyncio.run_coroutine_threadsafe(
-            send_discord_message(message_text=error_message),
-            bot.loop
-        )
+    @tasks.loop(minutes=2)
+    async def scraping_task():
+        await asyncio.to_thread(scrape_and_process)
 
-    finally:
-        # Close the browser
-        driver.quit()
+    @scraping_task.before_loop
+    async def before_scraping_task():
+        await bot.wait_until_ready()
 
-@tasks.loop(minutes=2)
-async def scraping_task():
-    await asyncio.to_thread(scrape_and_process)
+    @bot.event
+    async def on_ready():
+        print(f'Logged in as {bot.user} (ID: {bot.user.id})')
+        print('------')
+        try:
+            synced = await bot.sync_commands()
+            print(f"Synced {len(synced)} commands.")
+        except Exception as e:
+            logger.error(f"Error syncing commands: {e}")
 
-@scraping_task.before_loop
-async def before_scraping_task():
-    await bot.wait_until_ready()
+    # Start the task when the bot is ready
+    scraping_task.start()
 
-# Start the task when the bot is ready
-scraping_task.start()
-
-# Run the bot
-bot.run(DISCORD_BOT_TOKEN)
+    # Run the bot
+    bot.run(DISCORD_BOT_TOKEN)
