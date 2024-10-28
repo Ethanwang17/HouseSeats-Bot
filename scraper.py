@@ -24,8 +24,9 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# Initialize Discord bot
+# Initialize Discord bot with necessary intents
 intents = discord.Intents.default()
+intents.guilds = True  # Enable guild-related events
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 def get_db_connection():
@@ -77,11 +78,11 @@ def initialize_database():
     create_shows_table()
 
 async def send_discord_message(message_text):
-    channel = bot.get_channel(DISCORD_CHANNEL_ID)
-    if channel is None:
-        logger.error(f"Channel with ID {DISCORD_CHANNEL_ID} not found.")
-        return
     try:
+        channel = await bot.fetch_channel(DISCORD_CHANNEL_ID)
+        if channel is None:
+            logger.error(f"Channel with ID {DISCORD_CHANNEL_ID} not found.")
+            return
         await channel.send(message_text)
         logger.info("Discord message sent successfully!")
     except Exception as e:
@@ -210,13 +211,14 @@ async def scraping_loop():
         await asyncio.sleep(120)  # Sleep for 2 minutes
 
 async def run_bot_and_main():
+    # Start the bot
+    bot_task = asyncio.create_task(bot.start(DISCORD_BOT_TOKEN))
     # Wait until the bot is ready
     await bot.wait_until_ready()
     # Start the scraping loop
-    bot.loop.create_task(scraping_loop())
-
-    # We need to keep the bot running
-    await bot.start(DISCORD_BOT_TOKEN)
+    asyncio.create_task(scraping_loop())
+    # Keep the bot running
+    await bot_task
 
 if __name__ == "__main__":
     asyncio.run(run_bot_and_main())
