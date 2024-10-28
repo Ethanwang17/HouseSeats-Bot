@@ -30,14 +30,7 @@ intents.guilds = True  # Enable guild-related events
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 def get_db_connection():
-    logger.warning("Attempting database connection...")
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        logger.warning("Database connection successful")
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
+    return psycopg2.connect(DATABASE_URL)
 
 def create_shows_table():
     conn = get_db_connection()
@@ -118,15 +111,8 @@ def add_to_all_shows(shows):
     conn.close()
 
 def initialize_database():
-    logger.warning("Starting database initialization...")
-    try:
-        create_shows_table()
-        logger.warning("Shows table created successfully")
-        create_all_shows_table()
-        logger.warning("All shows table created successfully")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        raise
+    create_shows_table()
+    create_all_shows_table()  # Add this line
 
 async def send_discord_message(message_text=None, embeds=None):
     try:
@@ -143,14 +129,8 @@ async def send_discord_message(message_text=None, embeds=None):
         logger.error(f"Failed to send Discord message. Error: {e}")
 
 def scrape_and_process():
-    logger.warning("Starting scrape_and_process...")
     # Initialize the database
-    try:
-        initialize_database()
-        logger.warning("Database initialization complete")
-    except Exception as e:
-        logger.error(f"Failed during database setup: {e}")
-        return  # Exit the function if database setup fails
+    initialize_database()
 
     # Set up Chrome options for Heroku
     chrome_options = Options()
