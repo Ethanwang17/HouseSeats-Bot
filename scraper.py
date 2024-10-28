@@ -271,26 +271,38 @@ def scrape_and_process():
                 bot.loop
             )
 
-    @tasks.loop(minutes=2)
-    async def scraping_task():
-        await asyncio.to_thread(scrape_and_process)
+    except Exception as e:
+        error_message = f"An error occurred: {e}"
+        logger.error(error_message)
+        asyncio.run_coroutine_threadsafe(
+            send_discord_message(message_text=error_message),
+            bot.loop
+        )
 
-    @scraping_task.before_loop
-    async def before_scraping_task():
-        await bot.wait_until_ready()
+    finally:
+        # Close the browser
+        driver.quit()
 
-    @bot.event
-    async def on_ready():
-        print(f'Logged in as {bot.user} (ID: {bot.user.id})')
-        print('------')
-        try:
-            synced = await bot.sync_commands()
-            print(f"Synced {len(synced)} commands.")
-        except Exception as e:
-            logger.error(f"Error syncing commands: {e}")
+@tasks.loop(minutes=2)
+async def scraping_task():
+    await asyncio.to_thread(scrape_and_process)
 
-    # Start the task when the bot is ready
-    scraping_task.start()
+@scraping_task.before_loop
+async def before_scraping_task():
+    await bot.wait_until_ready()
 
-    # Run the bot
-    bot.run(DISCORD_BOT_TOKEN)
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    print('------')
+    try:
+        synced = await bot.sync_commands()
+        print(f"Synced {len(synced)} commands.")
+    except Exception as e:
+        logger.error(f"Error syncing commands: {e}")
+
+# Start the task when the bot is ready
+scraping_task.start()
+
+# Run the bot
+bot.run(DISCORD_BOT_TOKEN)
