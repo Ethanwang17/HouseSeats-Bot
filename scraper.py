@@ -197,29 +197,10 @@ def scrape_and_process():
 
             # Prepare and send Discord messages
             if new_shows:
+                # Send individual embeds for each new show
                 for show_id, show_info in new_shows.items():
                     embed = discord.Embed(
-                        title=f"{show_info['name']} ({show_id})",
-                        url=show_info['url']
-                    )
-                    if show_info['image_url']:
-                        embed.set_image(url=show_info['image_url'])
-                    # Schedule the message to be sent with embed
-                    asyncio.run_coroutine_threadsafe(
-                        send_discord_message(embeds=[embed]),
-                        bot.loop
-                    )
-            else:
-                message_text = "No new shows were found. Here are the existing shows:"
-                asyncio.run_coroutine_threadsafe(
-                    send_discord_message(message_text=message_text),
-                    bot.loop
-                )
-
-                # Send individual embeds for each existing show
-                for show_id, show_info in scraped_shows_dict.items():
-                    embed = discord.Embed(
-                        title=f"{show_info['name']} Show ID:({show_id})",
+                        title=f"{show_info['name']} (Show ID:{show_id})",
                         url=show_info['url']
                     )
                     if show_info['image_url']:
@@ -231,6 +212,12 @@ def scrape_and_process():
                     )
                     # Add a short delay to respect rate limits
                     time.sleep(1)
+            else:
+                message_text = "No new shows were found."
+                asyncio.run_coroutine_threadsafe(
+                    send_discord_message(message_text=message_text),
+                    bot.loop
+                )
 
         else:
             warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
