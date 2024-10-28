@@ -291,7 +291,21 @@ async def notify_users_about_new_shows(new_shows):
 
     logger.debug(f"New shows to notify: {new_shows}")
 
-    # Fetch all users in guilds
+    # First, send notifications to the channel about ALL new shows
+    for show_id, show_info in new_shows.items():
+        embed = discord.Embed(
+            title=f"New Show Available: {show_info['name']} (Show ID: {show_id})",
+            url=show_info['url'],
+            color=discord.Color.green()
+        )
+        if show_info['image_url']:
+            embed.set_image(url=show_info['image_url'])
+        
+        await send_discord_message(embeds=[embed])
+        # Add a short delay to respect rate limits
+        await asyncio.sleep(1)
+
+    # Continue with existing DM notification logic...
     users_to_notify = set()
     for guild in bot.guilds:
         async for member in guild.fetch_members(limit=None):
