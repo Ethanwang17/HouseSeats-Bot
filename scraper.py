@@ -410,5 +410,95 @@ async def blacklist_list(ctx):
         cur.close()
         conn.close()
 
+@bot.slash_command(name="all_shows", description="List all shows ever seen")
+async def all_shows(ctx):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, name, image_url FROM all_shows ORDER BY name')
+        shows = cur.fetchall()
+        
+        if not shows:
+            await ctx.respond("No shows found in the database.", ephemeral=True)
+            return
+
+        # Create embeds (Discord has a limit of 25 fields per embed)
+        embeds = []
+        current_embed = discord.Embed(title="All Shows History", color=discord.Color.blue())
+        field_count = 0
+        
+        for show_id, name, image_url in shows:
+            if field_count == 25:  # Start a new embed when we hit the limit
+                embeds.append(current_embed)
+                current_embed = discord.Embed(title="All Shows History (Continued)", color=discord.Color.blue())
+                field_count = 0
+            
+            current_embed.add_field(
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
+                inline=True
+            )
+            field_count += 1
+
+        # Add the last embed if it has any fields
+        if field_count > 0:
+            embeds.append(current_embed)
+
+        # Send all embeds
+        for embed in embeds:
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error fetching all shows: {e}")
+        await ctx.respond("An error occurred while fetching the shows.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.slash_command(name="current_shows", description="List currently available shows")
+async def current_shows(ctx):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, name, image_url FROM shows ORDER BY name')
+        shows = cur.fetchall()
+        
+        if not shows:
+            await ctx.respond("No current shows available.", ephemeral=True)
+            return
+
+        # Create embeds (Discord has a limit of 25 fields per embed)
+        embeds = []
+        current_embed = discord.Embed(title="Currently Available Shows", color=discord.Color.green())
+        field_count = 0
+        
+        for show_id, name, image_url in shows:
+            if field_count == 25:  # Start a new embed when we hit the limit
+                embeds.append(current_embed)
+                current_embed = discord.Embed(title="Currently Available Shows (Continued)", color=discord.Color.green())
+                field_count = 0
+            
+            current_embed.add_field(
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
+                inline=True
+            )
+            field_count += 1
+
+        # Add the last embed if it has any fields
+        if field_count > 0:
+            embeds.append(current_embed)
+
+        # Send all embeds
+        for embed in embeds:
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error fetching current shows: {e}")
+        await ctx.respond("An error occurred while fetching the shows.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
 # Run the bot
 bot.run(DISCORD_BOT_TOKEN)
