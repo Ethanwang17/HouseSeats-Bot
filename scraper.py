@@ -4,8 +4,7 @@ import logging
 import asyncio
 import psycopg2
 import discord
-from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import tasks
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -29,8 +28,7 @@ logger = logging.getLogger(__name__)
 intents = discord.Intents.default()
 intents.guilds = True  # Enable guild-related events
 intents.members = True  # Enable access to guild members
-bot = commands.Bot(command_prefix='!', intents=intents)
-tree = bot.tree  # For application commands
+bot = discord.Bot(intents=intents)
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
@@ -353,52 +351,46 @@ async def before_scraping_task():
 # Start the task when the bot is ready
 scraping_task.start()
 
-@bot.event
-async def on_ready():
-    # Sync the application commands with Discord
-    await tree.sync()
-    logger.info(f'Logged in as {bot.user}')
+@bot.slash_command(name="blacklist", description="Manage your personal show blacklist")
+async def blacklist(ctx):
+    pass
 
-@tree.command(name="blacklist", description="Manage your personal show blacklist")
-async def blacklist(interaction: discord.Interaction):
-    pass  # This is a parent command
-
-@blacklist.subcommand(name="add", description="Add a show ID to your blacklist")
-async def blacklist_add(interaction: discord.Interaction, show_id: str):
-    user_id = interaction.user.id
+@blacklist.command(name="add", description="Add a show ID to your blacklist")
+async def blacklist_add(ctx, show_id: str):
+    user_id = ctx.author.id
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
                     (user_id, show_id))
         conn.commit()
-        await interaction.response.send_message(f"Show ID `{show_id}` has been added to your blacklist.", ephemeral=True)
+        await ctx.respond(f"Show ID `{show_id}` has been added to your blacklist.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error adding show to blacklist: {e}")
-        await interaction.response.send_message("An error occurred while adding to the blacklist.", ephemeral=True)
+        await ctx.respond("An error occurred while adding to the blacklist.", ephemeral=True)
     finally:
         cur.close()
         conn.close()
 
-@blacklist.subcommand(name="remove", description="Remove a show ID from your blacklist")
-async def blacklist_remove(interaction: discord.Interaction, show_id: str):
-    user_id = interaction.user.id
+@blacklist.command(name="remove", description="Remove a show ID from your blacklist")
+async def blacklist_remove(ctx, show_id: str):
+    user_id = ctx.author.id
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
         conn.commit()
-        await interaction.response.send_message(f"Show ID `{show_id}` has been removed from your blacklist.", ephemeral=True)
+        await ctx.respond(f"Show ID `{show_id}` has been removed from your blacklist.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error removing show from blacklist: {e}")
-        await interaction.response.send_message("An error occurred while removing from the blacklist.", ephemeral=True)
+        await ctx.respond("An error occurred while removing from the blacklist.", ephemeral=True)
     finally:
         cur.close()
         conn.close()
 
-@blacklist.subcommand(name="list", description="List your blacklisted show IDs")
-async def blacklist_list(interaction: discord.Interaction):
-    user_id = interaction.user.id
+@blacklist.command(name="list", description="List your blacklisted show IDs")
+async def blacklist_list(ctx):
+    user_id = ctx.author.id
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -406,12 +398,12 @@ async def blacklist_list(interaction: discord.Interaction):
         rows = cur.fetchall()
         if rows:
             show_ids = [row[0] for row in rows]
-            await interaction.response.send_message(f"Your blacklisted show IDs: {', '.join(show_ids)}", ephemeral=True)
+            await ctx.respond(f"Your blacklisted show IDs: {', '.join(show_ids)}", ephemeral=True)
         else:
-            await interaction.response.send_message("Your blacklist is empty.", ephemeral=True)
+            await ctx.respond("Your blacklist is empty.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error fetching blacklist: {e}")
-        await interaction.response.send_message("An error occurred while fetching your blacklist.", ephemeral=True)
+        await ctx.respond("An error occurred while fetching your blacklist.", ephemeral=True)
     finally:
         cur.close()
         conn.close()
