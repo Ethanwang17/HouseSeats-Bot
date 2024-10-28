@@ -212,9 +212,7 @@ def scrape_and_process():
                         url=show_info['url']
                     )
                     if show_info['image_url']:
-                        embed.set_image(url=show_info['image_url'])
-                        # Add image as clickable field that links to show URL
-                        embed.add_field(name="\u200b", value=f"[Click here to view show]({show_info['url']})", inline=False)
+                        embed.set_thumbnail(url=show_info['image_url'])  # Changed from set_image to set_thumbnail
                     # Schedule the message to be sent with embed
                     asyncio.run_coroutine_threadsafe(
                         send_discord_message(embeds=[embed]),
