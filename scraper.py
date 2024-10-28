@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
+from discord.ui import Button, View
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -144,9 +145,12 @@ async def send_discord_message(message_text=None, embeds=None):
     except Exception as e:
         logger.error(f"Failed to send Discord message. Error: {e}")
 
-async def send_user_dm(user: discord.User, embed: discord.Embed):
+async def send_user_dm(user: discord.User, embed: discord.Embed, view: View = None):
     try:
-        await user.send(embed=embed)
+        if view:
+            await user.send(embed=embed, view=view)
+        else:
+            await user.send(embed=embed)
         logger.info(f"Sent DM to user {user.id}")
     except discord.Forbidden:
         logger.warning(f"Cannot send DM to user {user.id}. They might have DMs disabled.")
@@ -296,7 +300,7 @@ async def notify_users_about_new_shows(new_shows):
         embed = discord.Embed(
             title=f"New Show Available: {show_info['name']} (Show ID: {show_id})",
             url=show_info['url'],
-            color=discord.Color.green()
+            color=discord.Color.red()
         )
         if show_info['image_url']:
             embed.set_image(url=show_info['image_url'])
@@ -355,10 +359,49 @@ async def notify_users_about_new_shows(new_shows):
                 )
                 if show_info['image_url']:
                     embed.set_image(url=show_info['image_url'])
-                # Schedule the DM to be sent
-                asyncio.create_task(send_user_dm(user, embed))
-                # Add a short delay to respect rate limits
-                await asyncio.sleep(1)  # Use asyncio.sleep instead of time.sleep
+                
+                # Create a view with a blacklist button
+                view = View()
+                blacklist_button = Button(
+                    label="Blacklist Show",
+                    style=discord.ButtonStyle.secondary,
+                    custom_id=f"blacklist_{show_id}"
+                )
+
+                async def button_callback(interaction: discord.Interaction):
+                    if interaction.user.id != user.id:
+                        await interaction.response.send_message("This button is not for you!", ephemeral=True)
+                        return
+                    
+                    show_id_to_blacklist = interaction.custom_id.split('_')[1]
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    try:
+                        cur.execute(
+                            'INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                            (interaction.user.id, show_id_to_blacklist)
+                        )
+                        conn.commit()
+                        await interaction.response.send_message(
+                            f"Show ID `{show_id_to_blacklist}` has been added to your blacklist.",
+                            ephemeral=True
+                        )
+                    except Exception as e:
+                        logger.error(f"Error adding show to blacklist: {e}")
+                        await interaction.response.send_message(
+                            "An error occurred while adding to the blacklist.",
+                            ephemeral=True
+                        )
+                    finally:
+                        cur.close()
+                        conn.close()
+
+                blacklist_button.callback = button_callback
+                view.add_item(blacklist_button)
+
+                # Send the message with the view
+                await send_user_dm(user, embed, view)
+                await asyncio.sleep(1)
 
 @tasks.loop(minutes=2)
 async def scraping_task():
