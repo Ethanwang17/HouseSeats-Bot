@@ -219,7 +219,7 @@ def scrape_and_process():
                 # Send individual embeds for each existing show
                 for show_id, show_info in scraped_shows_dict.items():
                     embed = discord.Embed(
-                        title=f"{show_info['name']} ({show_id})",
+                        title=f"{show_info['name']} Show ID:({show_id})",
                         url=show_info['url']
                     )
                     if show_info['image_url']:
