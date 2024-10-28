@@ -104,19 +104,96 @@ def scrape_and_process():
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
-        # Your scraping code here
-        # ...
+        # Navigate to the login page
+        driver.get("https://lv.houseseats.com/login")
 
-        # Prepare the message content
-        if new_shows:
-            message_text = "New shows found:\n"
-            for show_id, show_name in new_shows:
-                message_text += f"- {show_name}\n"
+        # Wait for the email input field to be visible
+        email_field = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "emailAddress"))
+        )
+
+        # Enter your login credentials
+        email_field.send_keys(HOUSESEATS_EMAIL)
+        password_field = driver.find_element(By.ID, "password")
+        password_field.send_keys(HOUSESEATS_PASSWORD)
+
+        # Submit the form
+        submit_button = driver.find_element(By.XPATH, "//button[contains(@class, 'btn-orange')]")
+        submit_button.click()
+
+        # Wait for the page to load
+        time.sleep(5)
+
+        # Get the page source and parse it with BeautifulSoup
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+        # Find the div with id "event-info"
+        event_info_div = soup.find('div', id='event-info')
+
+        if event_info_div:
+            # Find all panels representing shows
+            panels = event_info_div.find_all('div', class_='panel panel-default')
+
+            # Initialize an empty dictionary to store scraped shows
+            scraped_shows_dict = {}
+
+            logger.debug(f"Found {len(panels)} show panels")
+
+            for panel in panels:
+                heading = panel.find('div', class_='panel-heading')
+                if not heading:
+                    continue  # Skip if no heading found
+
+                link = heading.find('a', href=lambda href: href and href.startswith('./tickets/view/'))
+                if not link:
+                    continue  # Skip if no valid link found
+
+                show_name = link.text.strip()
+                show_id = link['href'].split('=')[-1]
+
+                # Skip empty show names
+                if not show_name or show_name == "[...]":
+                    continue
+
+                # Add to dictionary without overwriting existing entries with empty names
+                if show_id not in scraped_shows_dict or scraped_shows_dict[show_id] == "[...]":
+                    scraped_shows_dict[show_id] = show_name
+
+            # Convert dictionary to list of tuples
+            scraped_shows = list(scraped_shows_dict.items())
+
+            # Get existing shows from the database
+            existing_shows = get_existing_shows()  # returns dict {id: name}
+
+            # Find new shows
+            existing_show_ids = set(existing_shows.keys())
+            scraped_show_ids = set(scraped_shows_dict.keys())
+
+            new_show_ids = scraped_show_ids - existing_show_ids
+
+            new_shows = [(show_id, scraped_shows_dict[show_id]) for show_id in new_show_ids]
+
+            logger.debug(f"Identified {len(new_shows)} new shows")
+
+            # Now erase the database and rewrite it with all the shows just found
+            delete_all_shows()
+            insert_all_shows(scraped_shows)
+
+            # Prepare the message content
+            if new_shows:
+                message_text = "New shows found:\n"
+                for show_id, show_name in new_shows:
+                    message_text += f"- {show_name}\n"
+            else:
+                message_text = "No new shows were found."
+
+            # Schedule the message to be sent
+            asyncio.run_coroutine_threadsafe(send_discord_message(message_text), bot.loop)
+
         else:
-            message_text = "No new shows were found."
-
-        # Schedule the message to be sent
-        asyncio.run_coroutine_threadsafe(send_discord_message(message_text), bot.loop)
+            warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
+            logger.warning(warning_message)
+            asyncio.run_coroutine_threadsafe(send_discord_message(warning_message), bot.loop)
 
     except Exception as e:
         error_message = f"An error occurred: {e}"
@@ -124,6 +201,7 @@ def scrape_and_process():
         asyncio.run_coroutine_threadsafe(send_discord_message(error_message), bot.loop)
 
     finally:
+        # Close the browser
         driver.quit()
 
 @tasks.loop(minutes=2)
