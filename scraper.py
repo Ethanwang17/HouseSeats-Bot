@@ -212,7 +212,7 @@ def scrape_and_process():
                         url=show_info['url']
                     )
                     if show_info['image_url']:
-                        embed.set_thumbnail(url=show_info['image_url'])  # Changed from set_image to set_thumbnail
+                        embed.set_image(url=show_info['image_url'])
                     # Schedule the message to be sent with embed
                     asyncio.run_coroutine_threadsafe(
                         send_discord_message(embeds=[embed]),
