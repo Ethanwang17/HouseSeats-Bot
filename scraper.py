@@ -289,6 +289,8 @@ async def notify_users_about_new_shows(new_shows):
     if not new_shows:
         return
 
+    logger.debug(f"New shows to notify: {new_shows}")
+
     # Fetch all users in guilds
     users_to_notify = set()
     for guild in bot.guilds:
@@ -301,21 +303,21 @@ async def notify_users_about_new_shows(new_shows):
     cur = conn.cursor()
     try:
         # Get all user blacklists for new shows
-        new_show_ids = tuple(new_shows.keys())
-        if len(new_show_ids) == 1:  # PostgreSQL requires special handling for single-item tuples
-            new_show_ids = f"('{new_show_ids[0]}')"
-        
+        new_show_ids = list(new_shows.keys())  # Always use a list
+        logger.debug(f"Fetching blacklists for show IDs: {new_show_ids}")
+
         query = '''
             SELECT user_id, show_id 
             FROM user_blacklists 
             WHERE show_id = ANY(%s)
         '''
-        cur.execute(query, (list(new_show_ids),))  # Convert to list for proper PostgreSQL array handling
-        
+        cur.execute(query, (new_show_ids,))  # Pass the list directly
+
         # Build a dictionary of user_id -> set of blacklisted show_ids
         user_blacklists = {}
         for row in cur.fetchall():
             user_id, show_id = row
+            logger.debug(f"User {user_id} has blacklisted show {show_id}")
             if user_id not in user_blacklists:
                 user_blacklists[user_id] = set()
             user_blacklists[user_id].add(show_id)
@@ -330,6 +332,7 @@ async def notify_users_about_new_shows(new_shows):
     for user in users_to_notify:
         blacklisted_show_ids = user_blacklists.get(user.id, set())
         shows_to_notify = {show_id: info for show_id, info in new_shows.items() if show_id not in blacklisted_show_ids}
+        logger.debug(f"User {user.id} will be notified about shows: {list(shows_to_notify.keys())}")
         if shows_to_notify:
             for show_id, show_info in shows_to_notify.items():
                 embed = discord.Embed(
