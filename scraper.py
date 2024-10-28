@@ -293,8 +293,8 @@ def scrape_and_process():
 class BlacklistButton(Button):
     def __init__(self, show_id: str, user_id: int):
         super().__init__(
-            label="Blacklist Show",
-            style=discord.ButtonStyle.secondary,
+            label="🚫 Blacklist Show",
+            style=discord.ButtonStyle.primary,
             custom_id=f"blacklist_{show_id}"
         )
         self.show_id = show_id
