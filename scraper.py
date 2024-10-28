@@ -197,14 +197,6 @@ def scrape_and_process():
 
             # Prepare and send Discord messages
             if new_shows:
-                # Send heading message first
-                heading_message = "# 🎭 NEW SHOWS FOUND! 🎭"
-                asyncio.run_coroutine_threadsafe(
-                    send_discord_message(message_text=heading_message),
-                    bot.loop
-                )
-                time.sleep(1)  # Brief delay after heading
-                
                 # Send individual embeds for each new show
                 for show_id, show_info in new_shows.items():
                     embed = discord.Embed(
