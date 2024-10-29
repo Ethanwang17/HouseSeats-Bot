@@ -13,6 +13,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from discord.ui import Button, View
+import pytz
+from datetime import datetime
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -30,6 +32,9 @@ intents = discord.Intents.default()
 intents.guilds = True  # Enable guild-related events
 intents.members = True  # Enable access to guild members
 bot = discord.Bot(intents=intents)
+
+# Add this constant with the other environment variables
+PST_TIMEZONE = pytz.timezone('America/Los_Angeles')
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
@@ -409,7 +414,14 @@ async def notify_users_about_new_shows(new_shows):
 
 @tasks.loop(minutes=2)
 async def scraping_task():
-    await asyncio.to_thread(scrape_and_process)
+    # Get current time in PST
+    current_time = datetime.now(PST_TIMEZONE)
+    
+    # Check if current time is between 8 AM and 5 PM PST
+    if 8 <= current_time.hour < 17:
+        await asyncio.to_thread(scrape_and_process)
+    else:
+        logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
 
 @scraping_task.before_loop
 async def before_scraping_task():
