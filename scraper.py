@@ -341,7 +341,7 @@ async def notify_users_about_new_shows(new_shows):
     # First, send notifications to the channel about ALL new shows
     for show_id, show_info in new_shows.items():
         embed = discord.Embed(
-            title=f"New Show Available: {show_info['name']} (Show ID: {show_id})",
+            title=f"{show_info['name']} (Show ID: {show_id})",
             url=show_info['url'],
             color=discord.Color.red()
         )
