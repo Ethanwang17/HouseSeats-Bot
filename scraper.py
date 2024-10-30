@@ -513,8 +513,8 @@ async def blacklist_list(ctx):
         ''', (user_id,))
         rows = cur.fetchall()
         if rows:
-            show_names = [f"**`{row[0]}`**" for row in rows]
-            await ctx.respond(f"Your blacklisted shows: {', '.join(show_names)}", ephemeral=True)
+            show_names = [f"• **`{row[0]}`**" for row in rows]  # Added bullet points
+            await ctx.respond("Your blacklisted shows:\n" + "\n".join(show_names), ephemeral=True)
         else:
             await ctx.respond("Your blacklist is empty.", ephemeral=True)
     except Exception as e:
