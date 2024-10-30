@@ -23,11 +23,8 @@ DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
 DISCORD_CHANNEL_ID = int(os.environ.get('DISCORD_CHANNEL_ID'))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# Set logging level to INFO to show all INFO level logs and above
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Set logging level to WARNING to reduce output
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Initialize Discord bot with necessary intents and application commands
