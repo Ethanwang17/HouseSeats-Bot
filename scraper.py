@@ -294,15 +294,16 @@ def scrape_and_process():
         # Close the browser
         driver.quit()
 
-# Add this class before the notify_users_about_new_shows function
+# Modify the BlacklistButton class to include show_name
 class BlacklistButton(Button):
-    def __init__(self, show_id: str, user_id: int):
+    def __init__(self, show_id: str, show_name: str, user_id: int):
         super().__init__(
             label="🚫 Blacklist Show",
             style=discord.ButtonStyle.primary,
             custom_id=f"blacklist_{show_id}_{user_id}"  # Unique custom_id
         )
         self.show_id = show_id
+        self.show_name = show_name  # Store the show name
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
@@ -322,7 +323,7 @@ class BlacklistButton(Button):
             )
             conn.commit()
             await interaction.followup.send(
-                f"Show ID `{self.show_id}` has been added to your blacklist.",
+                f"**`{self.show_name}`** has been added to your blacklist.",
                 ephemeral=True
             )
             # Disable the button to prevent further clicks
@@ -413,7 +414,7 @@ async def notify_users_about_new_shows(new_shows):
                 
                 # Create a view with the blacklist button
                 view = View(timeout=180)  # 3 minutes timeout
-                blacklist_button = BlacklistButton(show_id, user.id)
+                blacklist_button = BlacklistButton(show_id, show_info['name'], user.id)  # Pass show_name
                 view.add_item(blacklist_button)
 
                 # Keep a reference to the view
@@ -455,10 +456,18 @@ async def blacklist_add(ctx, show_id: str = discord.Option(description="Show ID 
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
-                    (user_id, show_id))
-        conn.commit()
-        await ctx.respond(f"Show ID `{show_id}` has been added to your blacklist.", ephemeral=True)
+        # CHANGE: Fetch the show name from the all_shows table instead of shows
+        cur.execute('SELECT name FROM all_shows WHERE id = %s', (show_id,))
+        result = cur.fetchone()
+        if result:
+            show_name = result[0]
+            cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                        (user_id, show_id))
+            conn.commit()
+            await ctx.respond(f"**`{show_name}`** has been added to your blacklist.", ephemeral=True)
+        else:
+            # CHANGE: Updated error message to specify all_shows
+            await ctx.respond("Show ID not found in the all shows list. Please check the ID and try again.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error adding show to blacklist: {e}")
         await ctx.respond("An error occurred while adding to the blacklist.", ephemeral=True)
@@ -472,9 +481,16 @@ async def blacklist_remove(ctx, show_id: str = discord.Option(description="Show 
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
-        conn.commit()
-        await ctx.respond(f"Show ID `{show_id}` has been removed from your blacklist.", ephemeral=True)
+        # Fetch the show name from the database
+        cur.execute('SELECT name FROM shows WHERE id = %s', (show_id,))
+        result = cur.fetchone()
+        if result:
+            show_name = result[0]
+            cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
+            conn.commit()
+            await ctx.respond(f"**`{show_name}`** has been removed from your blacklist.", ephemeral=True)
+        else:
+            await ctx.respond("Show ID not found. Please check the ID and try again.", ephemeral=True)
     except Exception as e:
         logger.error(f"Error removing show from blacklist: {e}")
         await ctx.respond("An error occurred while removing from the blacklist.", ephemeral=True)
@@ -488,11 +504,17 @@ async def blacklist_list(ctx):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute('SELECT show_id FROM user_blacklists WHERE user_id = %s', (user_id,))
+        # Fetch show names based on show_ids
+        cur.execute('''
+            SELECT shows.name 
+            FROM user_blacklists 
+            JOIN shows ON user_blacklists.show_id = shows.id
+            WHERE user_blacklists.user_id = %s
+        ''', (user_id,))
         rows = cur.fetchall()
         if rows:
-            show_ids = [row[0] for row in rows]
-            await ctx.respond(f"Your blacklisted show IDs: {', '.join(show_ids)}", ephemeral=True)
+            show_names = [f"**`{row[0]}`**" for row in rows]
+            await ctx.respond(f"Your blacklisted shows: {', '.join(show_names)}", ephemeral=True)
         else:
             await ctx.respond("Your blacklist is empty.", ephemeral=True)
     except Exception as e:
