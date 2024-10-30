@@ -300,7 +300,7 @@ class BlacklistButton(Button):
         super().__init__(
             label="🚫 Blacklist Show",
             style=discord.ButtonStyle.primary,
-            custom_id=f"blacklist_{show_id}"
+            custom_id=f"blacklist_{show_id}_{user_id}"  # Unique custom_id
         )
         self.show_id = show_id
         self.user_id = user_id
@@ -325,6 +325,9 @@ class BlacklistButton(Button):
                 f"Show ID `{self.show_id}` has been added to your blacklist.",
                 ephemeral=True
             )
+            # Disable the button to prevent further clicks
+            self.disabled = True
+            await interaction.message.edit(view=self.view)
         except Exception as e:
             logger.error(f"Error adding show to blacklist: {e}")
             await interaction.followup.send(
@@ -334,6 +337,8 @@ class BlacklistButton(Button):
         finally:
             cur.close()
             conn.close()
+
+active_views = []
 
 async def notify_users_about_new_shows(new_shows):
     if not new_shows:
@@ -407,9 +412,20 @@ async def notify_users_about_new_shows(new_shows):
                     embed.set_image(url=show_info['image_url'])
                 
                 # Create a view with the blacklist button
-                view = View()
+                view = View(timeout=180)  # 3 minutes timeout
                 blacklist_button = BlacklistButton(show_id, user.id)
                 view.add_item(blacklist_button)
+
+                # Keep a reference to the view
+                active_views.append(view)
+                
+                # Optionally, remove the view from active_views after timeout
+                async def remove_view_after_timeout(view):
+                    await asyncio.sleep(view.timeout)
+                    if view in active_views:
+                        active_views.remove(view)
+                
+                asyncio.create_task(remove_view_after_timeout(view))
 
                 # Send the message with the view
                 await send_user_dm(user, embed, view)
