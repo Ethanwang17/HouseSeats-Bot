@@ -306,8 +306,11 @@ class BlacklistButton(Button):
         self.user_id = user_id
 
     async def callback(self, interaction: discord.Interaction):
+        # Defer the response immediately to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+        
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("This button is not for you!", ephemeral=True)
+            await interaction.followup.send("This button is not for you!", ephemeral=True)
             return
         
         conn = get_db_connection()
@@ -318,13 +321,13 @@ class BlacklistButton(Button):
                 (interaction.user.id, self.show_id)
             )
             conn.commit()
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Show ID `{self.show_id}` has been added to your blacklist.",
                 ephemeral=True
             )
         except Exception as e:
             logger.error(f"Error adding show to blacklist: {e}")
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "An error occurred while adding to the blacklist.",
                 ephemeral=True
             )
