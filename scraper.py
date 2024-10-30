@@ -413,7 +413,7 @@ async def notify_users_about_new_shows(new_shows):
                     embed.set_image(url=show_info['image_url'])
                 
                 # Create a view with the blacklist button
-                view = View(timeout=180)  # 3 minutes timeout
+                view = View(timeout=3600)  # 1 hour timeout
                 blacklist_button = BlacklistButton(show_id, show_info['name'], user.id)  # Pass show_name
                 view.add_item(blacklist_button)
 
