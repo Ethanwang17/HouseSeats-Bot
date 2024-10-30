@@ -415,30 +415,17 @@ async def notify_users_about_new_shows(new_shows):
                 await send_user_dm(user, embed, view)
                 await asyncio.sleep(1)
 
-# @tasks.loop(minutes=2)
-# async def scraping_task():
-#     # Get current time in PST
-#     current_time = datetime.now(PST_TIMEZONE)
-    
-#     # Check if current time is between 8 AM and 5 PM PST
-#     if 8 <= current_time.hour < 17:
-#         await asyncio.to_thread(scrape_and_process)
-#     else:
-#         logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
-
 @tasks.loop(minutes=2)
 async def scraping_task():
-    # # Get current time in PST
-    # current_time = datetime.now(PST_TIMEZONE)
+    # Get current time in PST
+    current_time = datetime.now(PST_TIMEZONE)
     
-    # # Check if current time is between 8 AM and 5 PM PST
-    # if 8 <= current_time.hour < 17:
-    #     await asyncio.to_thread(scrape_and_process)
-    # else:
-    #     logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
-    
-    # Run scraping regardless of time
-    await asyncio.to_thread(scrape_and_process)
+    # Check if current time is between 8 AM and 5 PM PST
+    if 8 <= current_time.hour < 17:
+        await asyncio.to_thread(scrape_and_process)
+    else:
+        logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
+
 @scraping_task.before_loop
 async def before_scraping_task():
     await bot.wait_until_ready()
