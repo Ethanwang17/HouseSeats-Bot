@@ -433,7 +433,7 @@ async def notify_users_about_new_shows(new_shows):
 				await send_user_dm(user, embed, view)
 				await asyncio.sleep(1)
 
-@tasks.loop(minutes=random.randint(2, 3.5))
+@tasks.loop(minutes=random.randint(2, 3))
 async def scraping_task():
 	# Get current time in PST
 	current_time = datetime.now(PST_TIMEZONE)
