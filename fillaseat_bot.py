@@ -8,10 +8,11 @@ import psycopg2
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
 PASSWORD = os.environ.get('FILLASEAT_PASSWORD')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Validate environment variables
-if not USERNAME or not PASSWORD:
-    raise ValueError("Missing required environment variables. Please set FILLASEAT_USERNAME and FILLASEAT_PASSWORD")
+if not USERNAME or not PASSWORD or not DATABASE_URL:
+    raise ValueError("Missing required environment variables. Please set FILLASEAT_USERNAME, FILLASEAT_PASSWORD, and DATABASE_URL")
 
 # URLs
 LOGIN_PAGE_URL = 'https://www.fillaseatlasvegas.com/login2.php'
