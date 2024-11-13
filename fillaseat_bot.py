@@ -43,11 +43,6 @@ intents.guilds = True
 intents.members = True
 bot = discord.Bot(intents=intents)
 
-# Create necessary tables
-create_fillaseat_shows_table()
-create_fillaseat_all_shows_table()
-create_fillaseat_blacklist_table()
-
 # Add logging configuration
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -134,21 +129,6 @@ def fetch_events(session, headers):
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
-def create_fillaseat_blacklist_table():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS fillaseat_user_blacklists (
-            user_id BIGINT,
-            show_id TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, show_id)
-        )
-    ''')
-    conn.commit()
-    cur.close()
-    conn.close()
-
 def create_fillaseat_shows_table():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -202,6 +182,25 @@ def create_fillaseat_all_shows_table():
     conn.commit()
     cur.close()
     conn.close()
+
+def create_fillaseat_user_blacklists_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS fillaseat_user_blacklists (
+            user_id BIGINT NOT NULL,
+            show_id TEXT NOT NULL,
+            PRIMARY KEY (user_id, show_id)
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def initialize_database():
+    create_fillaseat_shows_table()
+    create_fillaseat_all_shows_table()
+    create_fillaseat_user_blacklists_table()
 
 def add_to_fillaseat_all_shows(shows):
     conn = get_db_connection()
@@ -260,7 +259,7 @@ class BlacklistButton(Button):
         super().__init__(
             label="🚫 Blacklist Show",
             style=discord.ButtonStyle.primary,
-            custom_id=f"blacklist_{show_id}_{user_id}"
+            custom_id=f"fillaseat_blacklist_{show_id}_{user_id}"
         )
         self.show_id = show_id
         self.show_name = show_name
@@ -282,13 +281,13 @@ class BlacklistButton(Button):
             )
             conn.commit()
             await interaction.followup.send(
-                f"**`{self.show_name}`** has been added to your blacklist.",
+                f"**`{self.show_name}`** has been added to your FillASeat blacklist.",
                 ephemeral=True
             )
             self.disabled = True
             await interaction.message.edit(view=self.view)
         except Exception as e:
-            logger.error(f"Error adding show to blacklist: {e}")
+            logger.error(f"Error adding show to FillASeat blacklist: {e}")
             await interaction.followup.send(
                 "An error occurred while adding to the blacklist.",
                 ephemeral=True
@@ -409,9 +408,171 @@ async def fillaseat_task():
 @fillaseat_task.before_loop
 async def before_fillaseat_task():
     await bot.wait_until_ready()
+    initialize_database()  # Initialize the database before starting the task
 
-# Add your slash commands here (similar to scraper.py)
-# ... 
+# Add your slash commands here
+@bot.slash_command(name="fillaseat_blacklist_add", description="Add a show to your FillASeat blacklist")
+async def fillaseat_blacklist_add(ctx, show_id: str = discord.Option(description="Show ID to blacklist")):
+    user_id = ctx.author.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Fetch the show name from the fillaseat_all_shows table
+        cur.execute('SELECT name FROM fillaseat_all_shows WHERE id = %s', (show_id,))
+        result = cur.fetchone()
+        if result:
+            show_name = result[0]
+            cur.execute('INSERT INTO fillaseat_user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                        (user_id, show_id))
+            conn.commit()
+            await ctx.respond(f"**`{show_name}`** has been added to your FillASeat blacklist.", ephemeral=True)
+        else:
+            await ctx.respond("Show ID not found in the FillASeat shows list. Please check the ID and try again.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error adding show to FillASeat blacklist: {e}")
+        await ctx.respond("An error occurred while adding to the FillASeat blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.slash_command(name="fillaseat_blacklist_remove", description="Remove a show from your FillASeat blacklist")
+async def fillaseat_blacklist_remove(ctx, show_id: str = discord.Option(description="Show ID to remove from blacklist")):
+    user_id = ctx.author.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Fetch the show name from the fillaseat_all_shows table
+        cur.execute('SELECT name FROM fillaseat_all_shows WHERE id = %s', (show_id,))
+        result = cur.fetchone()
+        if result:
+            show_name = result[0]
+            cur.execute('DELETE FROM fillaseat_user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
+            conn.commit()
+            await ctx.respond(f"**`{show_name}`** has been removed from your FillASeat blacklist.", ephemeral=True)
+        else:
+            await ctx.respond("Show ID not found. Please check the ID and try again.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error removing show from FillASeat blacklist: {e}")
+        await ctx.respond("An error occurred while removing from the FillASeat blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.slash_command(name="fillaseat_blacklist_list", description="List all shows in your FillASeat blacklist")
+async def fillaseat_blacklist_list(ctx):
+    user_id = ctx.author.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Fetch show names based on show_ids
+        cur.execute('''
+            SELECT fas.name 
+            FROM fillaseat_user_blacklists ub
+            JOIN fillaseat_all_shows fas ON ub.show_id = fas.id
+            WHERE ub.user_id = %s
+        ''', (user_id,))
+        rows = cur.fetchall()
+        if rows:
+            show_names = [f"• **`{row[0]}`**" for row in rows]  # Added bullet points
+            await ctx.respond("Your FillASeat blacklisted shows:\n" + "\n".join(show_names), ephemeral=True)
+        else:
+            await ctx.respond("Your FillASeat blacklist is empty.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Error fetching FillASeat blacklist: {e}")
+        await ctx.respond("An error occurred while fetching your FillASeat blacklist.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.slash_command(name="fillaseat_all_shows", description="List all FillASeat shows ever seen")
+async def fillaseat_all_shows(ctx):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, name, image_url FROM fillaseat_all_shows ORDER BY name')
+        shows = cur.fetchall()
+        
+        if not shows:
+            await ctx.respond("No shows found in the database.", ephemeral=True)
+            return
+
+        # Create embeds (Discord has a limit of 25 fields per embed)
+        embeds = []
+        current_embed = discord.Embed(title="All FillASeat Shows History", color=discord.Color.blue())
+        field_count = 0
+        
+        for show_id, name, image_url in shows:
+            if field_count == 25:  # Start a new embed when we hit the limit
+                embeds.append(current_embed)
+                current_embed = discord.Embed(title="All FillASeat Shows History (Continued)", color=discord.Color.blue())
+                field_count = 0
+            
+            current_embed.add_field(
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
+                inline=True
+            )
+            field_count += 1
+
+        # Add the last embed if it has any fields
+        if field_count > 0:
+            embeds.append(current_embed)
+
+        # Send all embeds
+        for embed in embeds:
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error fetching all FillASeat shows: {e}")
+        await ctx.respond("An error occurred while fetching the shows.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
+
+@bot.slash_command(name="fillaseat_current_shows", description="List currently available FillASeat shows")
+async def fillaseat_current_shows(ctx):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute('SELECT id, name, image_url FROM fillaseat_current_shows ORDER BY name')
+        shows = cur.fetchall()
+        
+        if not shows:
+            await ctx.respond("No current shows available.", ephemeral=True)
+            return
+
+        # Create embeds (Discord has a limit of 25 fields per embed)
+        embeds = []
+        current_embed = discord.Embed(title="Currently Available FillASeat Shows", color=discord.Color.green())
+        field_count = 0
+        
+        for show_id, name, image_url in shows:
+            if field_count == 25:  # Start a new embed when we hit the limit
+                embeds.append(current_embed)
+                current_embed = discord.Embed(title="Currently Available FillASeat Shows (Continued)", color=discord.Color.green())
+                field_count = 0
+            
+            current_embed.add_field(
+                name=f"{name} (ID: {show_id})",
+                value="\u200b",  # Zero-width space as value
+                inline=True
+            )
+            field_count += 1
+
+        # Add the last embed if it has any fields
+        if field_count > 0:
+            embeds.append(current_embed)
+
+        # Send all embeds
+        for embed in embeds:
+            await ctx.respond(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"Error fetching current FillASeat shows: {e}")
+        await ctx.respond("An error occurred while fetching the shows.", ephemeral=True)
+    finally:
+        cur.close()
+        conn.close()
 
 # Start the task and run the bot
 fillaseat_task.start()
