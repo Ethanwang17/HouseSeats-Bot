@@ -188,7 +188,7 @@ def is_within_operating_hours():
     """
     current_time = datetime.datetime.now().time()
     start_time = datetime.time(8, 0)  # 8:00 AM
-    end_time = datetime.time(20, 0)   # 5:00 PM
+    end_time = datetime.time(21, 0)   # 5:00 PM
     return start_time <= current_time <= end_time
 
 def main():
