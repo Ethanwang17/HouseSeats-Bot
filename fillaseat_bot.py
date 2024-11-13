@@ -4,6 +4,8 @@ import time
 import json
 import os
 import psycopg2
+import datetime
+import random
 
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
@@ -180,49 +182,78 @@ def add_to_fillaseat_all_shows(shows):
     cur.close()
     conn.close()
 
+def is_within_operating_hours():
+    """
+    Check if current time is between 8am and 5pm
+    """
+    current_time = datetime.datetime.now().time()
+    start_time = datetime.time(8, 0)  # 8:00 AM
+    end_time = datetime.time(17, 0)   # 5:00 PM
+    return start_time <= current_time <= end_time
+
 def main():
-    try:
-        # Create both tables if they don't exist
-        create_fillaseat_shows_table()
-        create_fillaseat_all_shows_table()
-        
-        # Get sessid and login
-        sessid = get_sessid(session, headers)
-        login_response = login(session, headers, sessid, USERNAME, PASSWORD)
-        
-        if is_login_successful(login_response):
-            print("Login successful!")
-            
-            # Fetch events and create a dictionary of shows
-            events = fetch_events(session, headers)
-            current_shows = {}
-            
-            for event in events:
-                event_id = event.get('e', 'N/A')
-                show_name = event.get('s', 'N/A')
-                show_url = f"https://www.fillaseatlasvegas.com/account/event_info.php?eid={event_id}"
-                image_url = f"https://static.fillaseat.com/images/events/{event_id}_std.jpg"
+    while True:
+        try:
+            if not is_within_operating_hours():
+                # Calculate time until next operating window
+                now = datetime.datetime.now()
+                next_run = now.replace(hour=8, minute=0, second=0, microsecond=0)
+                if now.time() >= datetime.time(17, 0):
+                    next_run += datetime.timedelta(days=1)
                 
-                current_shows[event_id] = {
-                    'name': show_name,
-                    'url': show_url,
-                    'image_url': image_url
-                }
+                sleep_seconds = (next_run - now).total_seconds()
+                print(f"Outside operating hours. Sleeping until {next_run.strftime('%I:%M %p')}")
+                time.sleep(sleep_seconds)
+                continue
+
+            # Create both tables if they don't exist
+            create_fillaseat_shows_table()
+            create_fillaseat_all_shows_table()
             
-            # Add to all_shows before updating current shows
-            add_to_fillaseat_all_shows(current_shows)
+            # Get sessid and login
+            sessid = get_sessid(session, headers)
+            login_response = login(session, headers, sessid, USERNAME, PASSWORD)
             
-            # Clear existing shows and insert new ones
-            delete_all_fillaseat_shows()
-            insert_fillaseat_shows(current_shows)
+            if is_login_successful(login_response):
+                print("Login successful!")
+                
+                # Fetch events and create a dictionary of shows
+                events = fetch_events(session, headers)
+                current_shows = {}
+                
+                for event in events:
+                    event_id = event.get('e', 'N/A')
+                    show_name = event.get('s', 'N/A')
+                    show_url = f"https://www.fillaseatlasvegas.com/account/event_info.php?eid={event_id}"
+                    image_url = f"https://static.fillaseat.com/images/events/{event_id}_std.jpg"
+                    
+                    current_shows[event_id] = {
+                        'name': show_name,
+                        'url': show_url,
+                        'image_url': image_url
+                    }
+                
+                # Add to all_shows before updating current shows
+                add_to_fillaseat_all_shows(current_shows)
+                
+                # Clear existing shows and insert new ones
+                delete_all_fillaseat_shows()
+                insert_fillaseat_shows(current_shows)
+                
+                print("Database updated successfully!")
+                
+            else:
+                print("Login failed. Please check your credentials and try again.")
             
-            print("Database updated successfully!")
+            # Sleep for 2-3 minutes before next run
+            sleep_time = random.uniform(120, 180)
+            print(f"Sleeping for {sleep_time:.1f} seconds until next check")
+            time.sleep(sleep_time)
             
-        else:
-            print("Login failed. Please check your credentials and try again.")
-    
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            # Still sleep before retry even if there was an error
+            time.sleep(120)
 
 if __name__ == "__main__":
     main()
