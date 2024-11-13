@@ -4,9 +4,6 @@ import time
 import json
 import os
 
-# Load environment variables from .env file (useful for local development)
-load_dotenv()  # Optional: remove this line when deploying to Heroku
-
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
 PASSWORD = os.environ.get('FILLASEAT_PASSWORD')
