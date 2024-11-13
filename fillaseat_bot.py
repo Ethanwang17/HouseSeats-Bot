@@ -10,9 +10,6 @@ USERNAME = os.environ.get('FILLASEAT_USERNAME')
 PASSWORD = os.environ.get('FILLASEAT_PASSWORD')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# Validate environment variables
-if not USERNAME or not PASSWORD or not DATABASE_URL:
-    raise ValueError("Missing required environment variables. Please set FILLASEAT_USERNAME, FILLASEAT_PASSWORD, and DATABASE_URL")
 
 # URLs
 LOGIN_PAGE_URL = 'https://www.fillaseatlasvegas.com/login2.php'
@@ -150,10 +147,44 @@ def insert_fillaseat_shows(shows):
     cur.close()
     conn.close()
 
+def create_fillaseat_all_shows_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS fillaseat_all_shows (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            url TEXT,
+            image_url TEXT,
+            first_seen_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def add_to_fillaseat_all_shows(shows):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    for show_id, show_info in shows.items():
+        try:
+            # Use INSERT ... ON CONFLICT to handle duplicates
+            cur.execute('''
+                INSERT INTO fillaseat_all_shows (id, name, url, image_url)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+            ''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
+        except Exception as e:
+            logger.error(f"Error inserting show {show_id} into fillaseat_all_shows: {e}")
+    conn.commit()
+    cur.close()
+    conn.close()
+
 def main():
     try:
-        # Create the table if it doesn't exist
+        # Create both tables if they don't exist
         create_fillaseat_shows_table()
+        create_fillaseat_all_shows_table()
         
         # Get sessid and login
         sessid = get_sessid(session, headers)
@@ -177,6 +208,9 @@ def main():
                     'url': show_url,
                     'image_url': image_url
                 }
+            
+            # Add to all_shows before updating current shows
+            add_to_fillaseat_all_shows(current_shows)
             
             # Clear existing shows and insert new ones
             delete_all_fillaseat_shows()
