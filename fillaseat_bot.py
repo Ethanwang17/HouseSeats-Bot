@@ -200,6 +200,15 @@ def add_to_fillaseat_all_shows(shows):
     cur.close()
     conn.close()
 
+def get_existing_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT id, name, url, image_url FROM fillaseat_current_shows')
+    existing_shows = {row[0]: {'name': row[1], 'url': row[2], 'image_url': row[3]} for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return existing_shows
+
 async def send_discord_message(message_text=None, embeds=None):
     try:
         channel = await bot.fetch_channel(DISCORD_CHANNEL_ID)
