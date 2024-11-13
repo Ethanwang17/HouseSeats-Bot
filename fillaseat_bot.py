@@ -198,7 +198,7 @@ def main():
                 # Calculate time until next operating window
                 now = datetime.datetime.now()
                 next_run = now.replace(hour=8, minute=0, second=0, microsecond=0)
-                if now.time() >= datetime.time(17, 0):
+                if now.time() >= datetime.time(21, 0):
                     next_run += datetime.timedelta(days=1)
                 
                 sleep_seconds = (next_run - now).total_seconds()
