@@ -4,15 +4,12 @@ import time
 import json
 import os
 import psycopg2
-import asyncio
-import random
-from datetime import datetime
-from zoneinfo import ZoneInfo  # For timezone handling
 
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
 PASSWORD = os.environ.get('FILLASEAT_PASSWORD')
 DATABASE_URL = os.environ.get('DATABASE_URL')
+
 
 # URLs
 LOGIN_PAGE_URL = 'https://www.fillaseatlasvegas.com/login2.php'
@@ -145,7 +142,7 @@ def insert_fillaseat_shows(shows):
                 VALUES (%s, %s, %s, %s)
             ''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
         except Exception as e:
-            print(f"Error inserting FillASeat show {show_id}: {e}")
+            logger.error(f"Error inserting FillASeat show {show_id}: {e}")
     conn.commit()
     cur.close()
     conn.close()
@@ -178,7 +175,7 @@ def add_to_fillaseat_all_shows(shows):
                 ON CONFLICT (id) DO NOTHING
             ''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
         except Exception as e:
-            print(f"Error inserting show {show_id} into fillaseat_all_shows: {e}")
+            logger.error(f"Error inserting show {show_id} into fillaseat_all_shows: {e}")
     conn.commit()
     cur.close()
     conn.close()
@@ -227,41 +224,5 @@ def main():
     except Exception as e:
         print(f"An error occurred: {e}")
 
-# ==================== Scheduled Task Implementation ====================
-
-async def scraping_task():
-    """
-    Asynchronous task that runs the scraping process every 2-3 minutes
-    between 8 AM and 5 PM PST.
-    """
-    PST_TIMEZONE = ZoneInfo('America/Los_Angeles')
-    while True:
-        current_time = datetime.now(PST_TIMEZONE)
-        if 8 <= current_time.hour < 17:
-            print(f"Starting scrape at {current_time.strftime('%Y-%m-%d %H:%M:%S')} PST")
-            await asyncio.to_thread(main)
-        else:
-            print(f"{current_time.strftime('%Y-%m-%d %H:%M:%S')} PST: Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
-        
-        # Wait for 2 to 3 minutes randomly
-        wait_minutes = random.randint(2, 3)
-        wait_seconds = wait_minutes * 60
-        await asyncio.sleep(wait_seconds)
-
-def run_scheduled_tasks():
-    """
-    Runs the asyncio event loop with the scheduled scraping task.
-    """
-    loop = asyncio.get_event_loop()
-    try:
-        loop.create_task(scraping_task())
-        loop.run_forever()
-    except KeyboardInterrupt:
-        print("Shutting down gracefully...")
-    finally:
-        loop.close()
-
-# ==================== Entry Point ====================
-
 if __name__ == "__main__":
-    run_scheduled_tasks()
+    main()
