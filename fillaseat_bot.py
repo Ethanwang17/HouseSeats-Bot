@@ -43,6 +43,11 @@ intents.guilds = True
 intents.members = True
 bot = discord.Bot(intents=intents)
 
+# Create necessary tables
+create_fillaseat_shows_table()
+create_fillaseat_all_shows_table()
+create_fillaseat_blacklist_table()
+
 # Add logging configuration
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
