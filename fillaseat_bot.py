@@ -6,6 +6,7 @@ import os
 import psycopg2
 import datetime
 import random
+import pytz
 
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
@@ -184,11 +185,12 @@ def add_to_fillaseat_all_shows(shows):
 
 def is_within_operating_hours():
     """
-    Check if current time is between 8am and 5pm
+    Check if current time is between 8am and 9pm Pacific Time
     """
-    current_time = datetime.datetime.now().time()
-    start_time = datetime.time(8, 0)  # 8:00 AM
-    end_time = datetime.time(21, 0)   # 5:00 PM
+    pacific_tz = pytz.timezone('America/Los_Angeles')
+    current_time = datetime.now(pacific_tz).time()
+    start_time = time(8, 0)  # 8:00 AM
+    end_time = time(21, 0)   # 9:00 PM
     return start_time <= current_time <= end_time
 
 def main():
@@ -196,13 +198,14 @@ def main():
         try:
             if not is_within_operating_hours():
                 # Calculate time until next operating window
-                now = datetime.datetime.now()
+                pacific_tz = pytz.timezone('America/Los_Angeles')
+                now = datetime.now(pacific_tz)
                 next_run = now.replace(hour=8, minute=0, second=0, microsecond=0)
-                if now.time() >= datetime.time(21, 0):
+                if now.time() >= time(21, 0):
                     next_run += datetime.timedelta(days=1)
                 
                 sleep_seconds = (next_run - now).total_seconds()
-                print(f"Outside operating hours. Sleeping until {next_run.strftime('%I:%M %p')}")
+                print(f"Outside operating hours (PT). Sleeping until {next_run.strftime('%I:%M %p %Z')}")
                 time.sleep(sleep_seconds)
                 continue
 
