@@ -3,6 +3,7 @@ import re
 import time
 import json
 import os
+import psycopg2
 
 # Replace credentials import with environment variables
 USERNAME = os.environ.get('FILLASEAT_USERNAME')
@@ -107,31 +108,81 @@ def fetch_events(session, headers):
     
     return events
 
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+def create_fillaseat_shows_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS fillaseat_current_shows (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            url TEXT,
+            image_url TEXT
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def delete_all_fillaseat_shows():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM fillaseat_current_shows')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def insert_fillaseat_shows(shows):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    for show_id, show_info in shows.items():
+        try:
+            cur.execute('''
+                INSERT INTO fillaseat_current_shows (id, name, url, image_url) 
+                VALUES (%s, %s, %s, %s)
+            ''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
+        except Exception as e:
+            logger.error(f"Error inserting FillASeat show {show_id}: {e}")
+    conn.commit()
+    cur.close()
+    conn.close()
+
 def main():
     try:
-        # Step 1: Get sessid from the login page
-        sessid = get_sessid(session, headers)
+        # Create the table if it doesn't exist
+        create_fillaseat_shows_table()
         
-        # Step 2: Submit the login form
+        # Get sessid and login
+        sessid = get_sessid(session, headers)
         login_response = login(session, headers, sessid, USERNAME, PASSWORD)
         
-        # Step 3: Verify if login was successful
         if is_login_successful(login_response):
             print("Login successful!")
-            # Step 4: Access a protected page (optional)
-            # access_protected_page(session, headers, PROTECTED_PAGE_URL)
             
-            # Step 5: Fetch and print events
+            # Fetch events and create a dictionary of shows
             events = fetch_events(session, headers)
-            print("\n--- Events List ---")
+            current_shows = {}
+            
             for event in events:
                 event_id = event.get('e', 'N/A')
-                event_name = event.get('s', 'N/A')
+                show_name = event.get('s', 'N/A')
                 show_url = f"https://www.fillaseatlasvegas.com/account/event_info.php?eid={event_id}"
                 image_url = f"https://static.fillaseat.com/images/events/{event_id}_std.jpg"
-                print(f"ID: {event_id}, Name: {event_name}")
-                print(f"URL: {show_url}")
-                print(f"Image: {image_url}\n")
+                
+                current_shows[event_id] = {
+                    'name': show_name,
+                    'url': show_url,
+                    'image_url': image_url
+                }
+            
+            # Clear existing shows and insert new ones
+            delete_all_fillaseat_shows()
+            insert_fillaseat_shows(current_shows)
+            
+            print("Database updated successfully!")
+            
         else:
             print("Login failed. Please check your credentials and try again.")
     
