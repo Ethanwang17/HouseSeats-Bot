@@ -11,3 +11,4 @@ psycopg2-binary==2.9.6
 selenium==4.10.0
 beautifulsoup4==4.12.2
 pytz==2024.1
+requests==2.31.0
