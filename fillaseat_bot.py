@@ -61,7 +61,7 @@ def get_sessid(session, headers):
 		raise Exception("Failed to find sessid in the login form.")
 	
 	sessid = match.group(1)
-	print(f"Retrieved sessid: {sessid}")
+	logger.info(f"Retrieved sessid: {sessid}")
 	return sessid
 
 def login(session, headers, sessid, username, password):
@@ -95,24 +95,21 @@ def fetch_events(session, headers):
 	"""
 	Fetch and parse events from the event_json.php endpoint.
 	"""
-	# Generate a timestamp for the cache-busting parameter
 	timestamp = int(time.time() * 1000)
 	events_url = EVENTS_URL_TEMPLATE.format(timestamp=timestamp)
 	
-	print(f"Fetching events from: {events_url}")
+	logger.info(f"Fetching events from: {events_url}")
 	
 	response = session.get(events_url, headers=headers)
 	if response.status_code != 200:
 		raise Exception(f"Failed to retrieve events. Status code: {response.status_code}")
 	
-	# The response is JSONP, e.g., getEventsSelect_cb([...])
-	# Extract the JSON part using regex
 	match = re.search(r'getEventsSelect_cb\((.*)\)', response.text, re.DOTALL)
 	if not match:
-		print("Response does not match expected JSONP format.")
-		print("----- Response Start -----")
-		print(response.text)
-		print("----- Response End -----")
+		logger.error("Response does not match expected JSONP format.")
+		logger.error("----- Response Start -----")
+		logger.error(response.text)
+		logger.error("----- Response End -----")
 		raise Exception("Failed to parse JSONP response.")
 	
 	json_data = match.group(1)
@@ -122,7 +119,7 @@ def fetch_events(session, headers):
 	except json.JSONDecodeError as e:
 		raise Exception(f"JSON decoding failed: {e}")
 	
-	print(f"Number of events: {len(events)}")
+	logger.info(f"Number of events: {len(events)}")
 	
 	return events
 
