@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize Discord bot with necessary intents and application commands
 intents = discord.Intents.default()
-intents.guilds = True  # Enable guild-related events
-intents.members = True  # Enable access to guild members
+intents.guilds = True
+intents.members = True
 bot = discord.Bot(intents=intents)
 
 # Add this constant with the other environment variables
