@@ -38,8 +38,8 @@ async def main():
 	try:
 		# Run both bots concurrently
 		await asyncio.gather(
-			run_bot('houseseats_bot.py'),
-			run_bot('fillaseat_bot.py')
+			run_bot('house_seats_bot.py'),
+			run_bot('fill_a_seat_bot.py')
 		)
 	except Exception as e:
 		logger.error(f"Error in main: {e}")
