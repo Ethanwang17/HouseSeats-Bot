@@ -17,7 +17,7 @@ import pytz
 from datetime import datetime
 import random
 
-# Use environment variables
+# environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
 DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
