@@ -17,7 +17,7 @@ import pytz
 from datetime import datetime
 import random
 
-# environment variables
+# Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
 DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize Discord bot with necessary intents and application commands
 intents = discord.Intents.default()
-intents.guilds = True  # Enable guild-related events
-intents.members = True  # Enable access to guild members
+intents.guilds = True
+intents.members = True
 bot = discord.Bot(intents=intents)
 
 # Add this constant with the other environment variables
@@ -44,7 +44,7 @@ def create_shows_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS shows (
+		CREATE TABLE IF NOT EXISTS houseseats_current_shows (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			url TEXT,
@@ -55,11 +55,11 @@ def create_shows_table():
 	cur.close()
 	conn.close()
 
-def create_all_shows_table():
+def create_houseseats_all_shows_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS all_shows (
+		CREATE TABLE IF NOT EXISTS houseseats_all_shows (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			url TEXT,
@@ -71,11 +71,11 @@ def create_all_shows_table():
 	cur.close()
 	conn.close()
 
-def create_user_blacklists_table():
+def create_houseseats_user_blacklists_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS user_blacklists (
+		CREATE TABLE IF NOT EXISTS houseseats_user_blacklists (
 			user_id BIGINT NOT NULL,
 			show_id TEXT NOT NULL,
 			PRIMARY KEY (user_id, show_id)
@@ -88,26 +88,26 @@ def create_user_blacklists_table():
 def get_existing_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
-	cur.execute('SELECT id, name, url, image_url FROM shows')
+	cur.execute('SELECT id, name, url, image_url FROM houseseats_current_shows')
 	existing_shows = {row[0]: {'name': row[1], 'url': row[2], 'image_url': row[3]} for row in cur.fetchall()}
 	cur.close()
 	conn.close()
 	return existing_shows
 
-def delete_all_shows():
+def delete_all_current_houseseats_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
-	cur.execute('DELETE FROM shows')
+	cur.execute('DELETE FROM houseseats_current_shows')
 	conn.commit()
 	cur.close()
 	conn.close()
 
-def insert_all_shows(shows):
+def insert_all_current_houseseats_shows(shows):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
 		try:
-			cur.execute('INSERT INTO shows (id, name, url, image_url) VALUES (%s, %s, %s, %s)',
+			cur.execute('INSERT INTO houseseats_current_shows (id, name, url, image_url) VALUES (%s, %s, %s, %s)',
 						(show_id, show_info['name'], show_info['url'], show_info['image_url']))
 		except Exception as e:
 			logger.error(f"Error inserting show {show_id}: {e}")
@@ -115,27 +115,27 @@ def insert_all_shows(shows):
 	cur.close()
 	conn.close()
 
-def add_to_all_shows(shows):
+def add_to_houseseats_all_shows(shows):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
 		try:
 			# Use INSERT ... ON CONFLICT to handle duplicates
 			cur.execute('''
-				INSERT INTO all_shows (id, name, url, image_url)
+				INSERT INTO houseseats_all_shows (id, name, url, image_url)
 				VALUES (%s, %s, %s, %s)
 				ON CONFLICT (id) DO NOTHING
 			''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
 		except Exception as e:
-			logger.error(f"Error inserting show {show_id} into all_shows: {e}")
+			logger.error(f"Error inserting show {show_id} into houseseats_all_shows: {e}")
 	conn.commit()
 	cur.close()
 	conn.close()
 
 def initialize_database():
 	create_shows_table()
-	create_all_shows_table()
-	create_user_blacklists_table()  # Add this line
+	create_houseseats_all_shows_table()
+	create_houseseats_user_blacklists_table()
 
 async def send_discord_message(message_text=None, embeds=None):
 	try:
@@ -248,7 +248,7 @@ def scrape_and_process():
 				}
 
 			# After scraping shows and before checking for new ones
-			add_to_all_shows(scraped_shows_dict)
+			add_to_houseseats_all_shows(scraped_shows_dict)
 
 			# Get existing shows from the database
 			existing_shows = get_existing_shows()  # returns dict {id: {'name', 'url', 'image_url'}}
@@ -264,8 +264,8 @@ def scrape_and_process():
 			logger.debug(f"Identified {len(new_shows)} new shows")
 
 			# Now erase the database and rewrite it with all the shows just found
-			delete_all_shows()
-			insert_all_shows(scraped_shows_dict)
+			delete_all_current_houseseats_shows()
+			insert_all_current_houseseats_shows(scraped_shows_dict)
 
 			# Prepare and send Discord messages
 			if new_shows:
@@ -319,7 +319,7 @@ class BlacklistButton(Button):
 		cur = conn.cursor()
 		try:
 			cur.execute(
-				'INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+				'INSERT INTO houseseats_user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
 				(interaction.user.id, self.show_id)
 			)
 			conn.commit()
@@ -379,7 +379,7 @@ async def notify_users_about_new_shows(new_shows):
 
 		query = '''
 			SELECT user_id, show_id 
-			FROM user_blacklists 
+			FROM houseseats_user_blacklists 
 			WHERE show_id = ANY(%s)
 		'''
 		cur.execute(query, (new_show_ids,))  # Pass the list directly
@@ -439,7 +439,7 @@ async def scraping_task():
 	current_time = datetime.now(PST_TIMEZONE)
 	
 	# Check if current time is between 8 AM and 5 PM PST
-	if 8 <= current_time.hour < 17:
+	if 8 <= current_time.hour < 18:
 		await asyncio.to_thread(scrape_and_process)
 	else:
 		logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
@@ -458,11 +458,11 @@ async def blacklist_add(ctx, show_id: str = discord.Option(description="Show ID 
 	cur = conn.cursor()
 	try:
 		# CHANGE: Fetch the show name from the all_shows table instead of shows
-		cur.execute('SELECT name FROM all_shows WHERE id = %s', (show_id,))
+		cur.execute('SELECT name FROM houseseats_all_shows WHERE id = %s', (show_id,))
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
-			cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+			cur.execute('INSERT INTO houseseats_user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
 						(user_id, show_id))
 			conn.commit()
 			await ctx.respond(f"**`{show_name}`** has been added to your blacklist.", ephemeral=True)
@@ -483,11 +483,11 @@ async def blacklist_remove(ctx, show_id: str = discord.Option(description="Show 
 	cur = conn.cursor()
 	try:
 		# Fetch the show name from the database
-		cur.execute('SELECT name FROM shows WHERE id = %s', (show_id,))
+		cur.execute('SELECT name FROM houseseats_current_shows WHERE id = %s', (show_id,))
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
-			cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
+			cur.execute('DELETE FROM houseseats_user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
 			conn.commit()
 			await ctx.respond(f"**`{show_name}`** has been removed from your blacklist.", ephemeral=True)
 		else:
@@ -505,16 +505,16 @@ async def blacklist_list(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		# Fetch show names based on show_ids
+		# Fetch show names based on show_ids from all shows table
 		cur.execute('''
-			SELECT shows.name 
-			FROM user_blacklists 
-			JOIN shows ON user_blacklists.show_id = shows.id
-			WHERE user_blacklists.user_id = %s
+			SELECT houseseats_all_shows.name 
+			FROM houseseats_user_blacklists 
+			JOIN houseseats_all_shows ON houseseats_user_blacklists.show_id = houseseats_all_shows.id
+			WHERE houseseats_user_blacklists.user_id = %s
 		''', (user_id,))
 		rows = cur.fetchall()
 		if rows:
-			show_names = [f"• **`{row[0]}`**" for row in rows]  # Added bullet points
+			show_names = [f"• **`{row[0]}`**" for row in rows]
 			await ctx.respond("Your blacklisted shows:\n" + "\n".join(show_names), ephemeral=True)
 		else:
 			await ctx.respond("Your blacklist is empty.", ephemeral=True)
@@ -525,12 +525,12 @@ async def blacklist_list(ctx):
 		cur.close()
 		conn.close()
 
-@bot.slash_command(name="all_shows", description="List all shows ever seen")
-async def all_shows(ctx):
+@bot.slash_command(name="houseseats_all_shows", description="List all shows ever seen")
+async def houseseats_all_shows(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		cur.execute('SELECT id, name, image_url FROM all_shows ORDER BY name')
+		cur.execute('SELECT id, name, image_url FROM houseseats_all_shows ORDER BY name')
 		shows = cur.fetchall()
 		
 		if not shows:
@@ -575,7 +575,7 @@ async def current_shows(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		cur.execute('SELECT id, name, image_url FROM shows ORDER BY name')
+		cur.execute('SELECT id, name, image_url FROM houseseats_current_shows ORDER BY name')
 		shows = cur.fetchall()
 		
 		if not shows:
