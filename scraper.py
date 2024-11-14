@@ -44,7 +44,7 @@ def create_shows_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS shows (
+		CREATE TABLE IF NOT EXISTS houseseats_shows (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			url TEXT,
@@ -88,7 +88,7 @@ def create_user_blacklists_table():
 def get_existing_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
-	cur.execute('SELECT id, name, url, image_url FROM shows')
+	cur.execute('SELECT id, name, url, image_url FROM houseseats_shows')
 	existing_shows = {row[0]: {'name': row[1], 'url': row[2], 'image_url': row[3]} for row in cur.fetchall()}
 	cur.close()
 	conn.close()
@@ -97,7 +97,7 @@ def get_existing_shows():
 def delete_houseseats_all_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
-	cur.execute('DELETE FROM shows')
+	cur.execute('DELETE FROM houseseats_shows')
 	conn.commit()
 	cur.close()
 	conn.close()
@@ -107,7 +107,7 @@ def insert_houseseats_all_shows(shows):
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
 		try:
-			cur.execute('INSERT INTO shows (id, name, url, image_url) VALUES (%s, %s, %s, %s)',
+			cur.execute('INSERT INTO houseseats_shows (id, name, url, image_url) VALUES (%s, %s, %s, %s)',
 						(show_id, show_info['name'], show_info['url'], show_info['image_url']))
 		except Exception as e:
 			logger.error(f"Error inserting show {show_id}: {e}")
@@ -483,7 +483,7 @@ async def blacklist_remove(ctx, show_id: str = discord.Option(description="Show 
 	cur = conn.cursor()
 	try:
 		# Fetch the show name from the database
-		cur.execute('SELECT name FROM shows WHERE id = %s', (show_id,))
+		cur.execute('SELECT name FROM houseseats_shows WHERE id = %s', (show_id,))
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
@@ -507,14 +507,14 @@ async def blacklist_list(ctx):
 	try:
 		# Fetch show names based on show_ids
 		cur.execute('''
-			SELECT shows.name 
+			SELECT houseseats_shows.name 
 			FROM user_blacklists 
-			JOIN shows ON user_blacklists.show_id = shows.id
+			JOIN houseseats_shows ON user_blacklists.show_id = houseseats_shows.id
 			WHERE user_blacklists.user_id = %s
 		''', (user_id,))
 		rows = cur.fetchall()
 		if rows:
-			show_names = [f"• **`{row[0]}`**" for row in rows]  # Added bullet points
+			show_names = [f"• **`{row[0]}`**" for row in rows]
 			await ctx.respond("Your blacklisted shows:\n" + "\n".join(show_names), ephemeral=True)
 		else:
 			await ctx.respond("Your blacklist is empty.", ephemeral=True)
@@ -575,7 +575,7 @@ async def current_shows(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		cur.execute('SELECT id, name, image_url FROM shows ORDER BY name')
+		cur.execute('SELECT id, name, image_url FROM houseseats_shows ORDER BY name')
 		shows = cur.fetchall()
 		
 		if not shows:
