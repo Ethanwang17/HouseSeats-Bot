@@ -389,7 +389,7 @@ async def scraping_task():
 	current_time = datetime.now(PST_TIMEZONE)
 	
 	# Check if current time is between 8 AM and 5 PM PST
-	if 8 <= current_time.hour < 18:
+	if 8 <= current_time.hour < 20:
 		await asyncio.to_thread(scrape_and_process)
 	else:
 		logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
