@@ -505,11 +505,11 @@ async def blacklist_list(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		# Fetch show names based on show_ids
+		# Fetch show names based on show_ids from all shows table
 		cur.execute('''
-			SELECT houseseats_current_shows.name 
+			SELECT houseseats_all_shows.name 
 			FROM houseseats_user_blacklists 
-			JOIN houseseats_current_shows ON houseseats_user_blacklists.show_id = houseseats_current_shows.id
+			JOIN houseseats_all_shows ON houseseats_user_blacklists.show_id = houseseats_all_shows.id
 			WHERE houseseats_user_blacklists.user_id = %s
 		''', (user_id,))
 		rows = cur.fetchall()
