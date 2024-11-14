@@ -360,7 +360,7 @@ async def notify_users_about_new_shows(new_shows):
 @tasks.loop(minutes=random.randint(2, 3))
 async def fillaseat_task():
 	current_time = datetime.now(PST_TIMEZONE)
-	if 8 <= current_time.hour < 17:
+	if 8 <= current_time.hour < 24:
 		try:
 			# Get sessid and login
 			sessid = get_sessid(session, headers)
