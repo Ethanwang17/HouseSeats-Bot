@@ -94,7 +94,7 @@ def get_existing_shows():
 	conn.close()
 	return existing_shows
 
-def delete_houseseats_all_shows():
+def delete_all_current_houseseats_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('DELETE FROM houseseats_shows')
@@ -102,7 +102,7 @@ def delete_houseseats_all_shows():
 	cur.close()
 	conn.close()
 
-def insert_houseseats_all_shows(shows):
+def insert_all_current_houseseats_shows(shows):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
@@ -135,7 +135,7 @@ def add_to_houseseats_all_shows(shows):
 def initialize_database():
 	create_shows_table()
 	create_houseseats_all_shows_table()
-	create_user_blacklists_table()  # Add this line
+	create_user_blacklists_table()
 
 async def send_discord_message(message_text=None, embeds=None):
 	try:
@@ -264,8 +264,8 @@ def scrape_and_process():
 			logger.debug(f"Identified {len(new_shows)} new shows")
 
 			# Now erase the database and rewrite it with all the shows just found
-			delete_houseseats_all_shows()
-			insert_houseseats_all_shows(scraped_shows_dict)
+			delete_all_current_houseseats_shows()
+			insert_all_current_houseseats_shows(scraped_shows_dict)
 
 			# Prepare and send Discord messages
 			if new_shows:
