@@ -5,19 +5,12 @@ import asyncio
 import psycopg2
 import discord
 from discord.ext import tasks
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
+import requests
+import re
 from discord.ui import Button, View
 import pytz
 from datetime import datetime
 import random
-import re
-from login import login_to_houseseats
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -170,62 +163,74 @@ def scrape_and_process():
 	initialize_database()
 
 	try:
-		# Use the new login system
-		session = login_to_houseseats(HOUSESEATS_EMAIL, HOUSESEATS_PASSWORD)
-		if not session:
-			error_message = "Failed to login to HouseSeats"
-			logger.error(error_message)
-			asyncio.run_coroutine_threadsafe(
-				send_discord_message(message_text=error_message),
-				bot.loop
-			)
-			return
-
-		# Fetch shows data
-		shows_url = 'https://lv.houseseats.com/member/ajax/upcoming-shows.bv?supersecret=&search=&sortField=&startMonthYear=&endMonthYear=&startDate=&endDate=&start=0'
-		shows_response = session.get(shows_url)
-		
-		if shows_response.status_code != 200:
-			error_message = f"Failed to fetch shows. Status code: {shows_response.status_code}"
-			logger.error(error_message)
-			asyncio.run_coroutine_threadsafe(
-				send_discord_message(message_text=error_message),
-				bot.loop
-			)
-			return
-
-		# Parse shows using regex
-		pattern = r'<h1><a href="./tickets/view/\?showid=(\d+)">(.*?)</a></h1>'
-		shows = re.findall(pattern, shows_response.text)
-
-		# Create scraped_shows_dict
-		scraped_shows_dict = {}
+		# Base URLs
+		login_url = 'https://lv.houseseats.com/member/index.bv'
 		base_img_url = 'https://lv.houseseats.com/resources/media/'
 		base_show_url = 'https://lv.houseseats.com/member/tickets/view/'
+		
+		# Create a session object to maintain cookies
+		session = requests.Session()
+		
+		# Prepare login data
+		login_data = {
+			'submit': 'login',
+			'lastplace': '',
+			'email': HOUSESEATS_EMAIL,
+			'password': HOUSESEATS_PASSWORD
+		}
+		
+		headers = {
+			'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+			'Accept': 'application/json, text/plain, */*',
+			'Accept-Language': 'en-US,en;q=0.9',
+			'Referer': 'https://lv.houseseats.com/',
+		}
 
+		# Send POST request to login
+		response = session.post(login_url, data=login_data, headers=headers)
+		
+		if response.status_code != 200:
+			raise Exception(f"Login failed with status code: {response.status_code}")
+
+		# Fetch the upcoming shows page
+		shows_url = 'https://lv.houseseats.com/member/ajax/upcoming-shows.bv?supersecret=&search=&sortField=&startMonthYear=&endMonthYear=&startDate=&endDate=&start=0'
+		shows_response = session.get(shows_url, headers=headers)
+		
+		# Find all show titles and IDs within h1 tags
+		pattern = r'<h1><a href="./tickets/view/\?showid=(\d+)">(.*?)</a></h1>'
+		shows = re.findall(pattern, shows_response.text)
+		
+		# Create dictionary for scraped shows
+		scraped_shows_dict = {}
 		for show_id, show_name in shows:
 			show_name = show_name.strip()
-			if show_name and show_name != "[...]":
+			if show_name and 'See All Dates' not in show_name:
+				show_url = f"{base_show_url}?showid={show_id}"
+				image_url = f"{base_img_url}{show_id}.jpg"
+				
 				scraped_shows_dict[show_id] = {
 					'name': show_name,
-					'url': f"{base_show_url}?showid={show_id}",
-					'image_url': f"{base_img_url}{show_id}.jpg"
+					'url': show_url,
+					'image_url': image_url
 				}
 
-		# Rest of the existing functionality remains the same
+		# After scraping shows and before checking for new ones
 		add_to_houseseats_all_shows(scraped_shows_dict)
+
+		# Get existing shows from the database
 		existing_shows = get_existing_shows()
-		
+
+		# Find new shows
 		existing_show_ids = set(existing_shows.keys())
 		scraped_show_ids = set(scraped_shows_dict.keys())
 		new_show_ids = scraped_show_ids - existing_show_ids
 		new_shows = {show_id: scraped_shows_dict[show_id] for show_id in new_show_ids}
 
-		logger.debug(f"Identified {len(new_shows)} new shows")
-
+		# Now erase the database and rewrite it with all the shows just found
 		delete_all_current_houseseats_shows()
 		insert_all_current_houseseats_shows(scraped_shows_dict)
 
+		# Notify users via DMs if there are new shows
 		if new_shows:
 			asyncio.run_coroutine_threadsafe(
 				notify_users_about_new_shows(new_shows),
@@ -384,7 +389,7 @@ async def scraping_task():
 	current_time = datetime.now(PST_TIMEZONE)
 	
 	# Check if current time is between 8 AM and 5 PM PST
-	if 8 <= current_time.hour < 20:
+	if 8 <= current_time.hour < 18:
 		await asyncio.to_thread(scrape_and_process)
 	else:
 		logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
