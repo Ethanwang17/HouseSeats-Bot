@@ -11,6 +11,8 @@ from discord.ui import Button, View
 import pytz
 from datetime import datetime
 import random
+import html
+
 
 # environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -203,7 +205,7 @@ def scrape_and_process():
 		# Create dictionary for scraped shows
 		scraped_shows_dict = {}
 		for show_id, show_name in shows:
-			show_name = show_name.strip()
+			show_name = html.unescape(show_name.strip())
 			if show_name and 'See All Dates' not in show_name:
 				show_url = f"{base_show_url}?showid={show_id}"
 				image_url = f"{base_img_url}{show_id}.jpg"
