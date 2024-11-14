@@ -55,11 +55,11 @@ def create_shows_table():
 	cur.close()
 	conn.close()
 
-def create_all_shows_table():
+def create_houseseats_all_shows_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS all_shows (
+		CREATE TABLE IF NOT EXISTS houseseats_all_shows (
 			id TEXT PRIMARY KEY,
 			name TEXT,
 			url TEXT,
@@ -94,7 +94,7 @@ def get_existing_shows():
 	conn.close()
 	return existing_shows
 
-def delete_all_shows():
+def delete_houseseats_all_shows():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('DELETE FROM shows')
@@ -102,7 +102,7 @@ def delete_all_shows():
 	cur.close()
 	conn.close()
 
-def insert_all_shows(shows):
+def insert_houseseats_all_shows(shows):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
@@ -115,26 +115,26 @@ def insert_all_shows(shows):
 	cur.close()
 	conn.close()
 
-def add_to_all_shows(shows):
+def add_to_houseseats_all_shows(shows):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	for show_id, show_info in shows.items():
 		try:
 			# Use INSERT ... ON CONFLICT to handle duplicates
 			cur.execute('''
-				INSERT INTO all_shows (id, name, url, image_url)
+				INSERT INTO houseseats_all_shows (id, name, url, image_url)
 				VALUES (%s, %s, %s, %s)
 				ON CONFLICT (id) DO NOTHING
 			''', (show_id, show_info['name'], show_info['url'], show_info['image_url']))
 		except Exception as e:
-			logger.error(f"Error inserting show {show_id} into all_shows: {e}")
+			logger.error(f"Error inserting show {show_id} into houseseats_all_shows: {e}")
 	conn.commit()
 	cur.close()
 	conn.close()
 
 def initialize_database():
 	create_shows_table()
-	create_all_shows_table()
+	create_houseseats_all_shows_table()
 	create_user_blacklists_table()  # Add this line
 
 async def send_discord_message(message_text=None, embeds=None):
@@ -248,7 +248,7 @@ def scrape_and_process():
 				}
 
 			# After scraping shows and before checking for new ones
-			add_to_all_shows(scraped_shows_dict)
+			add_to_houseseats_all_shows(scraped_shows_dict)
 
 			# Get existing shows from the database
 			existing_shows = get_existing_shows()  # returns dict {id: {'name', 'url', 'image_url'}}
@@ -264,8 +264,8 @@ def scrape_and_process():
 			logger.debug(f"Identified {len(new_shows)} new shows")
 
 			# Now erase the database and rewrite it with all the shows just found
-			delete_all_shows()
-			insert_all_shows(scraped_shows_dict)
+			delete_houseseats_all_shows()
+			insert_houseseats_all_shows(scraped_shows_dict)
 
 			# Prepare and send Discord messages
 			if new_shows:
@@ -458,7 +458,7 @@ async def blacklist_add(ctx, show_id: str = discord.Option(description="Show ID 
 	cur = conn.cursor()
 	try:
 		# CHANGE: Fetch the show name from the all_shows table instead of shows
-		cur.execute('SELECT name FROM all_shows WHERE id = %s', (show_id,))
+		cur.execute('SELECT name FROM houseseats_all_shows WHERE id = %s', (show_id,))
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
@@ -525,12 +525,12 @@ async def blacklist_list(ctx):
 		cur.close()
 		conn.close()
 
-@bot.slash_command(name="all_shows", description="List all shows ever seen")
-async def all_shows(ctx):
+@bot.slash_command(name="houseseats_all_shows", description="List all shows ever seen")
+async def houseseats_all_shows(ctx):
 	conn = get_db_connection()
 	cur = conn.cursor()
 	try:
-		cur.execute('SELECT id, name, image_url FROM all_shows ORDER BY name')
+		cur.execute('SELECT id, name, image_url FROM houseseats_all_shows ORDER BY name')
 		shows = cur.fetchall()
 		
 		if not shows:
