@@ -16,6 +16,8 @@ from discord.ui import Button, View
 import pytz
 from datetime import datetime
 import random
+import re
+from login import login_to_houseseats
 
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
@@ -167,119 +169,66 @@ def scrape_and_process():
 	# Initialize the database
 	initialize_database()
 
-	# Set up Chrome options for Heroku
-	chrome_options = Options()
-	chrome_options.add_argument('--headless')  # Run Chrome in headless mode
-	chrome_options.add_argument('--no-sandbox')  # Bypass OS security model
-	chrome_options.add_argument('--disable-dev-shm-usage')  # Overcome limited resource problems
-	chrome_options.binary_location = os.environ.get('GOOGLE_CHROME_BIN', '/app/.apt/usr/bin/google-chrome')
-
-	# Initialize the headless webdriver
-	service = Service(executable_path=os.environ.get('CHROMEDRIVER_PATH', '/app/.chromedriver/bin/chromedriver'))
-	driver = webdriver.Chrome(service=service, options=chrome_options)
-
 	try:
-		# Navigate to the login page
-		driver.get("https://lv.houseseats.com/login")
+		# Use the new login system
+		session = login_to_houseseats(HOUSESEATS_EMAIL, HOUSESEATS_PASSWORD)
+		if not session:
+			error_message = "Failed to login to HouseSeats"
+			logger.error(error_message)
+			asyncio.run_coroutine_threadsafe(
+				send_discord_message(message_text=error_message),
+				bot.loop
+			)
+			return
 
-		# Wait for the email input field to be visible
-		email_field = WebDriverWait(driver, 10).until(
-			EC.presence_of_element_located((By.ID, "emailAddress"))
-		)
+		# Fetch shows data
+		shows_url = 'https://lv.houseseats.com/member/ajax/upcoming-shows.bv?supersecret=&search=&sortField=&startMonthYear=&endMonthYear=&startDate=&endDate=&start=0'
+		shows_response = session.get(shows_url)
+		
+		if shows_response.status_code != 200:
+			error_message = f"Failed to fetch shows. Status code: {shows_response.status_code}"
+			logger.error(error_message)
+			asyncio.run_coroutine_threadsafe(
+				send_discord_message(message_text=error_message),
+				bot.loop
+			)
+			return
 
-		# Enter your login credentials
-		email_field.send_keys(HOUSESEATS_EMAIL)
-		password_field = driver.find_element(By.ID, "password")
-		password_field.send_keys(HOUSESEATS_PASSWORD)
+		# Parse shows using regex
+		pattern = r'<h1><a href="./tickets/view/\?showid=(\d+)">(.*?)</a></h1>'
+		shows = re.findall(pattern, shows_response.text)
 
-		# Submit the form
-		submit_button = driver.find_element(By.XPATH, "//button[contains(@class, 'btn-orange')]")
-		submit_button.click()
+		# Create scraped_shows_dict
+		scraped_shows_dict = {}
+		base_img_url = 'https://lv.houseseats.com/resources/media/'
+		base_show_url = 'https://lv.houseseats.com/member/tickets/view/'
 
-		# Wait for the page to load
-		time.sleep(5)
-
-		# Get the page source and parse it with BeautifulSoup
-		soup = BeautifulSoup(driver.page_source, 'html.parser')
-
-		# Find the div with id "event-info"
-		event_info_div = soup.find('div', id='event-info')
-
-		if event_info_div:
-			# Find all panels representing shows
-			panels = event_info_div.find_all('div', class_='panel panel-default')
-
-			# Initialize an empty dictionary to store scraped shows
-			scraped_shows_dict = {}
-
-			logger.debug(f"Found {len(panels)} show panels")
-
-			for panel in panels:
-				heading = panel.find('div', class_='panel-heading')
-				if not heading:
-					continue  # Skip if no heading found
-
-				link = heading.find('a', href=lambda href: href and href.startswith('./tickets/view/'))
-				if not link:
-					continue  # Skip if no valid link found
-
-				show_name = link.text.strip()
-				show_id = link['href'].split('=')[-1]
-
-				# Construct the full show URL
-				show_url = 'https://lv.houseseats.com/member' + link['href'][1:]  # Remove the leading '.'
-
-				# Get the image URL
-				image_tag = panel.find('img', src=lambda src: src and src.startswith('/resources/media/'))
-				if image_tag:
-					image_url = 'https://lv.houseseats.com' + image_tag['src']
-				else:
-					image_url = None  # Handle cases where image is not available
-
-				# Skip empty show names
-				if not show_name or show_name == "[...]":
-					continue
-
-				# Add to dictionary
+		for show_id, show_name in shows:
+			show_name = show_name.strip()
+			if show_name and show_name != "[...]":
 				scraped_shows_dict[show_id] = {
 					'name': show_name,
-					'url': show_url,
-					'image_url': image_url
+					'url': f"{base_show_url}?showid={show_id}",
+					'image_url': f"{base_img_url}{show_id}.jpg"
 				}
 
-			# After scraping shows and before checking for new ones
-			add_to_houseseats_all_shows(scraped_shows_dict)
+		# Rest of the existing functionality remains the same
+		add_to_houseseats_all_shows(scraped_shows_dict)
+		existing_shows = get_existing_shows()
+		
+		existing_show_ids = set(existing_shows.keys())
+		scraped_show_ids = set(scraped_shows_dict.keys())
+		new_show_ids = scraped_show_ids - existing_show_ids
+		new_shows = {show_id: scraped_shows_dict[show_id] for show_id in new_show_ids}
 
-			# Get existing shows from the database
-			existing_shows = get_existing_shows()  # returns dict {id: {'name', 'url', 'image_url'}}
+		logger.debug(f"Identified {len(new_shows)} new shows")
 
-			# Find new shows
-			existing_show_ids = set(existing_shows.keys())
-			scraped_show_ids = set(scraped_shows_dict.keys())
+		delete_all_current_houseseats_shows()
+		insert_all_current_houseseats_shows(scraped_shows_dict)
 
-			new_show_ids = scraped_show_ids - existing_show_ids
-
-			new_shows = {show_id: scraped_shows_dict[show_id] for show_id in new_show_ids}
-
-			logger.debug(f"Identified {len(new_shows)} new shows")
-
-			# Now erase the database and rewrite it with all the shows just found
-			delete_all_current_houseseats_shows()
-			insert_all_current_houseseats_shows(scraped_shows_dict)
-
-			# Prepare and send Discord messages
-			if new_shows:
-				# Notify users via DMs, considering their blacklists
-				asyncio.run_coroutine_threadsafe(
-					notify_users_about_new_shows(new_shows),
-					bot.loop
-				)
-
-		else:
-			warning_message = "Warning: Could not find the event-info div. The page structure might have changed."
-			logger.warning(warning_message)
+		if new_shows:
 			asyncio.run_coroutine_threadsafe(
-				send_discord_message(message_text=warning_message),
+				notify_users_about_new_shows(new_shows),
 				bot.loop
 			)
 
@@ -290,10 +239,6 @@ def scrape_and_process():
 			send_discord_message(message_text=error_message),
 			bot.loop
 		)
-
-	finally:
-		# Close the browser
-		driver.quit()
 
 # Modify the BlacklistButton class to include show_name
 class BlacklistButton(Button):
@@ -439,7 +384,7 @@ async def scraping_task():
 	current_time = datetime.now(PST_TIMEZONE)
 	
 	# Check if current time is between 8 AM and 5 PM PST
-	if 8 <= current_time.hour < 18:
+	if 8 <= current_time.hour < 20:
 		await asyncio.to_thread(scrape_and_process)
 	else:
 		logger.debug("Outside of operating hours (8 AM - 5 PM PST). Skipping scrape.")
