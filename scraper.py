@@ -13,7 +13,6 @@ from datetime import datetime
 import random
 import html
 
-
 # environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
