@@ -15,8 +15,8 @@ import random
 # Use environment variables
 HOUSESEATS_EMAIL = os.environ.get('HOUSESEATS_EMAIL')
 HOUSESEATS_PASSWORD = os.environ.get('HOUSESEATS_PASSWORD')
-DISCORD_BOT_TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
-DISCORD_CHANNEL_ID = int(os.environ.get('DISCORD_CHANNEL_ID'))
+DISCORD_BOT_TOKEN = os.environ.get('HOUSESEATS_DISCORD_BOT_TOKEN')
+DISCORD_CHANNEL_ID = int(os.environ.get('HOUSESEATS_DISCORD_CHANNEL_ID'))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Set logging level to WARNING to reduce output
