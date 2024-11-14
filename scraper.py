@@ -71,11 +71,11 @@ def create_houseseats_all_shows_table():
 	cur.close()
 	conn.close()
 
-def create_user_blacklists_table():
+def create_houseseats_user_blacklists_table():
 	conn = get_db_connection()
 	cur = conn.cursor()
 	cur.execute('''
-		CREATE TABLE IF NOT EXISTS user_blacklists (
+		CREATE TABLE IF NOT EXISTS houseseats_user_blacklists (
 			user_id BIGINT NOT NULL,
 			show_id TEXT NOT NULL,
 			PRIMARY KEY (user_id, show_id)
@@ -135,7 +135,7 @@ def add_to_houseseats_all_shows(shows):
 def initialize_database():
 	create_shows_table()
 	create_houseseats_all_shows_table()
-	create_user_blacklists_table()
+	create_houseseats_user_blacklists_table()
 
 async def send_discord_message(message_text=None, embeds=None):
 	try:
@@ -319,7 +319,7 @@ class BlacklistButton(Button):
 		cur = conn.cursor()
 		try:
 			cur.execute(
-				'INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+				'INSERT INTO houseseats_user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
 				(interaction.user.id, self.show_id)
 			)
 			conn.commit()
@@ -379,7 +379,7 @@ async def notify_users_about_new_shows(new_shows):
 
 		query = '''
 			SELECT user_id, show_id 
-			FROM user_blacklists 
+			FROM houseseats_user_blacklists 
 			WHERE show_id = ANY(%s)
 		'''
 		cur.execute(query, (new_show_ids,))  # Pass the list directly
@@ -462,7 +462,7 @@ async def blacklist_add(ctx, show_id: str = discord.Option(description="Show ID 
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
-			cur.execute('INSERT INTO user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+			cur.execute('INSERT INTO houseseats_user_blacklists (user_id, show_id) VALUES (%s, %s) ON CONFLICT DO NOTHING',
 						(user_id, show_id))
 			conn.commit()
 			await ctx.respond(f"**`{show_name}`** has been added to your blacklist.", ephemeral=True)
@@ -487,7 +487,7 @@ async def blacklist_remove(ctx, show_id: str = discord.Option(description="Show 
 		result = cur.fetchone()
 		if result:
 			show_name = result[0]
-			cur.execute('DELETE FROM user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
+			cur.execute('DELETE FROM houseseats_user_blacklists WHERE user_id = %s AND show_id = %s', (user_id, show_id))
 			conn.commit()
 			await ctx.respond(f"**`{show_name}`** has been removed from your blacklist.", ephemeral=True)
 		else:
@@ -508,9 +508,9 @@ async def blacklist_list(ctx):
 		# Fetch show names based on show_ids
 		cur.execute('''
 			SELECT houseseats_current_shows.name 
-			FROM user_blacklists 
-			JOIN houseseats_current_shows ON user_blacklists.show_id = houseseats_current_shows.id
-			WHERE user_blacklists.user_id = %s
+			FROM houseseats_user_blacklists 
+			JOIN houseseats_current_shows ON houseseats_user_blacklists.show_id = houseseats_current_shows.id
+			WHERE houseseats_user_blacklists.user_id = %s
 		''', (user_id,))
 		rows = cur.fetchall()
 		if rows:
