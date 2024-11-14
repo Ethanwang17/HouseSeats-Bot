@@ -38,7 +38,7 @@ async def main():
 	try:
 		# Run both bots concurrently
 		await asyncio.gather(
-			run_bot('scraper.py'),
+			run_bot('houseseats_bot.py'),
 			run_bot('fillaseat_bot.py')
 		)
 	except Exception as e:
