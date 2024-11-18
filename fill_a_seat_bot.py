@@ -305,7 +305,15 @@ async def notify_users_about_new_shows(new_shows):
 			color=discord.Color.red()
 		)
 		if show_info['image_url']:
-			embed.set_image(url=show_info['image_url'])
+			# Validate image URL before setting
+			try:
+				image_response = session.head(show_info['image_url'], timeout=5)
+				if image_response.status_code == 200:
+					embed.set_image(url=show_info['image_url'])
+				else:
+					logger.warning(f"Image not available for show {show_id}: {image_response.status_code}")
+			except Exception as e:
+				logger.error(f"Error checking image for show {show_id}: {e}")
 		
 		await send_discord_message(embeds=[embed])
 		await asyncio.sleep(1)
@@ -396,6 +404,8 @@ async def fillaseat_task():
 				
 				# Notify users about new shows
 				if new_shows:
+					# Add small delay to allow images to become available
+					await asyncio.sleep(5)
 					await notify_users_about_new_shows(new_shows)
 			
 		except Exception as e:
@@ -548,6 +558,15 @@ async def fillaseat_current_shows(ctx):
 				embeds.append(current_embed)
 				current_embed = discord.Embed(title="Currently Available FillASeat Shows (Continued)", color=discord.Color.green())
 				field_count = 0
+			
+			# Add thumbnail if image exists and is accessible
+			if image_url and field_count == 0:  # Only check first show in each embed
+				try:
+					image_response = session.head(image_url, timeout=5)
+					if image_response.status_code == 200:
+						current_embed.set_thumbnail(url=image_url)
+				except Exception as e:
+					logger.error(f"Error checking image for show {show_id}: {e}")
 			
 			current_embed.add_field(
 				name=f"{name} (ID: {show_id})",
